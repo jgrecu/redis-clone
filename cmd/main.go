@@ -1,45 +1,41 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 )
 
 func main() {
-	err := run()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+	run()
 }
 
-func run() error {
+func run() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
-		return fmt.Errorf("failed to bind to port 6379: %w", err)
+		slog.Error("failed to bind to port 6379: %v", err)
+		os.Exit(1)
 	}
 
-	defer closeIt(l, &err, "close listener")
+	defer l.Close()
 
 	log.Printf("listening %v", l.Addr())
 
-	//for {
-	// Block until we receive an incoming connection
-	conn, err := l.Accept()
-	if err != nil {
-		return fmt.Errorf("listener: %w", err)
-	}
+	for {
+		// Block until we receive an incoming connection
+		conn, err := l.Accept()
+		if err != nil {
+			slog.Error("Error accepting connections: %w", err)
+			continue
+		}
 
-	// Handle client connection
-	err = handleClient(conn)
-	if err != nil {
-		return fmt.Errorf("client: %w", err)
+		// Handle client connection
+		go handleClient(conn)
 	}
-	//}
-	return nil
 }
 
 func closeIt(c io.Closer, errp *error, msg string) {
@@ -49,24 +45,29 @@ func closeIt(c io.Closer, errp *error, msg string) {
 	}
 }
 
-func handleClient(conn net.Conn) (err error) {
+func handleClient(conn net.Conn) {
 	// Ensure we close the connection after we're done
-	defer closeIt(conn, &err, "close connection")
+	defer conn.Close()
 
 	// Read data
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
-		if err != nil {
-			return fmt.Errorf("read command: %w", err)
-		}
 
-		log.Printf("read command received %d bytes, with the follwing data: %s", n, buf[:n])
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				slog.Error("reading error: %w", err)
+			}
+
+			return
+		}
 
 		// Write the data back
 		_, err = conn.Write([]byte("+PONG\r\n"))
 		if err != nil {
-			return fmt.Errorf("write response: %w", err)
+			slog.Error("writing error: %w", err)
 		}
+
+		slog.Info("Received %d bytes, message: %s", n, buf[:n])
 	}
 }
