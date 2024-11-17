@@ -26,27 +26,19 @@ func run() error {
 
 	log.Printf("listening %v", l.Addr())
 
+	//for {
+	// Block until we receive an incoming connection
 	conn, err := l.Accept()
 	if err != nil {
-		return fmt.Errorf("accept: %w", err)
+		return fmt.Errorf("listener: %w", err)
 	}
 
-	defer closeIt(conn, &err, "close connection")
-
-	buf := make([]byte, 128)
-
-	_, err = conn.Read(buf)
+	// Handle client connection
+	err = handleClient(conn)
 	if err != nil {
-		return fmt.Errorf("read command: %w", err)
+		return fmt.Errorf("client: %w", err)
 	}
-
-	log.Printf("read command:\n%s", buf)
-
-	_, err = conn.Write([]byte("+PONG\r\n"))
-	if err != nil {
-		return fmt.Errorf("write response: %w", err)
-	}
-
+	//}
 	return nil
 }
 
@@ -54,5 +46,27 @@ func closeIt(c io.Closer, errp *error, msg string) {
 	err := c.Close()
 	if *errp == nil {
 		*errp = fmt.Errorf("%s: %w", msg, err)
+	}
+}
+
+func handleClient(conn net.Conn) (err error) {
+	// Ensure we close the connection after we're done
+	defer closeIt(conn, &err, "close connection")
+
+	// Read data
+	buf := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			return fmt.Errorf("read command: %w", err)
+		}
+
+		log.Printf("read command received %d bytes, with the follwing data: %s", n, buf[:n])
+
+		// Write the data back
+		_, err = conn.Write([]byte("+PONG\r\n"))
+		if err != nil {
+			return fmt.Errorf("write response: %w", err)
+		}
 	}
 }
