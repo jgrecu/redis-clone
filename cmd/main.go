@@ -7,10 +7,13 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 )
 
 const ARRAY = '*'
 const BULK = '$'
+
+var store sync.Map
 
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -87,6 +90,18 @@ func evaluateResp(msg []byte) []byte {
 			return appendSimpleString(msg[:0], "PONG")
 		case "echo" == cmd:
 			return appendSimpleString(msg[:0], args[1])
+		case "set" == cmd:
+			err := processSetCommand(args)
+			if err != nil {
+				return appendSimpleString(msg[:0], "-ERR"+err.Error())
+			}
+			return appendSimpleString(msg[:0], "OK")
+		case "get" == cmd:
+			result, err := processGetCommand(args)
+			if err != nil {
+				return appendSimpleString(msg[:0], "-ERR"+err.Error())
+			}
+			return appendSimpleString(msg[:0], result)
 		default:
 			return appendSimpleString(msg[:0], "-ERR unknown command")
 		}
@@ -95,6 +110,25 @@ func evaluateResp(msg []byte) []byte {
 		return appendSimpleString(msg[:0], "-ERR unknown command")
 	}
 
+}
+
+func processGetCommand(args []string) (string, error) {
+	if len(args) < 2 {
+		return "", fmt.Errorf("not enough args")
+	}
+	val, ok := store.Load(args[1])
+	if !ok {
+		return "", nil
+	}
+	return val.(string), nil
+}
+
+func processSetCommand(args []string) error {
+	if len(args) < 3 {
+		return fmt.Errorf("not enough args")
+	}
+	store.Store(args[1], args[2])
+	return nil
 }
 
 func processBulkStrings(msg []byte, length int) []string {
