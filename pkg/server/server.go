@@ -5,34 +5,39 @@ import (
 	"log"
 	"net"
 	"strings"
-	"time"
 
+	"github.com/jgrecu/redis-clone/pkg/config"
+	"github.com/jgrecu/redis-clone/pkg/rdb"
 	"github.com/jgrecu/redis-clone/pkg/resp"
 	"github.com/jgrecu/redis-clone/pkg/storage"
 )
 
 // Server represents the Redis server
 type Server struct {
-	addr     string
+	config   *config.Config
 	store    *storage.Store
+	rdb      *rdb.RDB
 	parser   *resp.Parser
 	writer   *resp.Writer
 	commands map[string]Command
 }
 
 // NewServer creates a new Redis server
-func NewServer(addr string, cleanupInterval time.Duration) *Server {
-	store := storage.NewStore(cleanupInterval)
+func NewServer(cfg *config.Config) *Server {
+	store := storage.NewStore(cfg.CleanupInterval)
 	writer := resp.NewWriter()
 	parser := resp.NewParser()
 
 	s := &Server{
-		addr:     addr,
+		config:   cfg,
 		store:    store,
 		parser:   parser,
 		writer:   writer,
 		commands: make(map[string]Command),
 	}
+
+	// Initialize RDB
+	s.rdb = rdb.NewRDB(cfg, store)
 
 	// Register commandss
 	s.registerCommands()
@@ -45,17 +50,25 @@ func (s *Server) registerCommands() {
 	s.commands["echo"] = NewEchoCommand(s.writer)
 	s.commands["set"] = NewSetCommand(s.writer, s.store)
 	s.commands["get"] = NewGetCommand(s.writer, s.store)
+	s.commands["config"] = NewConfigGetCommand(s.writer, s.config)
+	s.commands["save"] = NewSaveCommand(s.writer, s.rdb)
+	s.commands["keys"] = NewKeysCommand(s.writer, s.store)
 }
 
 // Start starts the Redis server
 func (s *Server) Start() error {
-	l, err := net.Listen("tcp", s.addr)
+	// Load existing RDB file if it exists
+	if err := s.rdb.Load(); err != nil {
+		return fmt.Errorf("failed to load RDB: %w", err)
+	}
+
+	l, err := net.Listen("tcp", s.config.Address)
 	if err != nil {
 		return err
 	}
 	defer l.Close()
 
-	log.Printf("Server listening on %s", s.addr)
+	log.Printf("Server listening on %s", s.config.Address)
 
 	for {
 		conn, err := l.Accept()

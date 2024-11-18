@@ -1,10 +1,13 @@
 package server
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jgrecu/redis-clone/pkg/config"
+	"github.com/jgrecu/redis-clone/pkg/rdb"
 	"github.com/jgrecu/redis-clone/pkg/resp"
 	"github.com/jgrecu/redis-clone/pkg/storage"
 )
@@ -90,4 +93,77 @@ func (c *GetCommand) Execute(args []string) ([]byte, error) {
 		return c.writer.WriteNullBulk(), nil
 	}
 	return c.writer.WriteSimpleString(val), nil
+}
+
+// ConfigGetCommand implements the CONFIG GET command
+type ConfigGetCommand struct {
+	writer *resp.Writer
+	config *config.Config
+}
+
+func NewConfigGetCommand(writer *resp.Writer, config *config.Config) *ConfigGetCommand {
+	return &ConfigGetCommand{
+		writer: writer,
+		config: config,
+	}
+}
+
+func (c *ConfigGetCommand) Execute(args []string) ([]byte, error) {
+	if len(args) != 3 {
+		return c.writer.WriteError("wrong number of arguments for CONFIG GET"), nil
+	}
+
+	param := strings.ToLower(args[2])
+	value, err := c.config.Get(param)
+	if err != nil {
+		return c.writer.WriteError(err.Error()), nil
+	}
+
+	// Return array with parameter name and value
+	response := []byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+		len(param), param, len(value), value))
+	return response, nil
+}
+
+// SaveCommand implements SAVE command
+type SaveCommand struct {
+	writer *resp.Writer
+	rdb    *rdb.RDB
+}
+
+func NewSaveCommand(writer *resp.Writer, rdb *rdb.RDB) *SaveCommand {
+	return &SaveCommand{
+		writer: writer,
+		rdb:    rdb,
+	}
+}
+
+func (c *SaveCommand) Execute(args []string) ([]byte, error) {
+	err := c.rdb.Save()
+	if err != nil {
+		return c.writer.WriteError(err.Error()), nil
+	}
+	return c.writer.WriteSimpleString("OK"), nil
+}
+
+// KeysCommand implements the KEYS command
+type KeysCommand struct {
+	writer *resp.Writer
+	store  *storage.Store
+}
+
+func NewKeysCommand(writer *resp.Writer, store *storage.Store) *KeysCommand {
+	return &KeysCommand{writer: writer, store: store}
+}
+
+func (c *KeysCommand) Execute(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return c.writer.WriteError("wrong number of arguments"), nil
+	}
+
+	keys := c.store.Keys(args[1])
+	if len(keys) == 0 {
+		return c.writer.WriteNullBulk(), nil
+	}
+	return c.writer.WriteArray(keys), nil
 }

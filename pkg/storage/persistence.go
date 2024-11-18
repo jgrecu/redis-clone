@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -93,4 +94,53 @@ func (s *Store) cleanup() {
 // Close stops the cleanup goroutine
 func (s *Store) Close() {
 	s.janitor.Stop()
+}
+
+// Dump returns a copy of the current store data
+func (s *Store) Dump() map[string]Item {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dump := make(map[string]Item, len(s.data))
+	for k, v := range s.data {
+		dump[k] = v
+	}
+	return dump
+}
+
+// Restore replaces the current store data with the provided data
+func (s *Store) Restore(data map[string]Item) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.data = data
+}
+
+func (s *Store) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = make(map[string]Item)
+}
+
+// Keys return the list of current keys in store data matching the pattern
+func (s *Store) Keys(pattern string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if pattern == "*" {
+		keys := make([]string, 0, len(s.data))
+		for k := range s.data {
+			keys = append(keys, k)
+		}
+		return keys
+	}
+
+	var keys []string
+	for k := range s.data {
+		if matched, _ := filepath.Match(pattern, k); matched {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys
 }
