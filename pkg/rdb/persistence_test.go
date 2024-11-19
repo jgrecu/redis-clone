@@ -43,7 +43,7 @@ func TestRDB_SaveAndLoadWithCustomDir(t *testing.T) {
 	}
 
 	// Clear store
-	//storage.
+	store.Clear()
 
 	// Test Load
 	if err := rdb.Load(); err != nil {
