@@ -6,11 +6,21 @@ import (
 	"time"
 )
 
+type ValueType uint8
+
+const (
+	String ValueType = iota
+	List
+	Set
+	ZSet
+	Hash
+)
+
 // Item represents a value in the store with optional expiration
 type Item struct {
-	Value     string
-	ExpiresAt time.Time
-	HasExpiry bool
+	Value  string
+	Expire *time.Time
+	Type   ValueType
 }
 
 // Store represents a thread-safe key-value store
@@ -39,15 +49,20 @@ func (s *Store) Set(key string, value string, expiration time.Duration) {
 	defer s.mu.Unlock()
 
 	item := Item{
-		Value:     value,
-		HasExpiry: expiration > 0,
+		Value: value,
 	}
 
-	if item.HasExpiry {
-		item.ExpiresAt = time.Now().Add(expiration)
+	if expiration > 0 {
+		expireTime := time.Now().Add(expiration)
+		item.Expire = &expireTime
 	}
 
 	s.data[key] = item
+}
+
+// Add stores a key-value pair to the map, key str, value Item
+func (s *Store) add(key string, value *Item) {
+	s.data[key] = *value
 }
 
 // Get retrieves a value by key
@@ -61,7 +76,7 @@ func (s *Store) Get(key string) (string, bool) {
 	}
 
 	// Check if item has expired
-	if item.HasExpiry && time.Now().After(item.ExpiresAt) {
+	if item.Expire != nil && time.Now().After(*item.Expire) {
 		return "", false
 	}
 
@@ -82,7 +97,7 @@ func (s *Store) cleanup() {
 		now := time.Now()
 
 		for key, item := range s.data {
-			if item.HasExpiry && now.After(item.ExpiresAt) {
+			if item.Expire != nil && now.After(*item.Expire) {
 				delete(s.data, key)
 			}
 		}
@@ -113,7 +128,9 @@ func (s *Store) Restore(data map[string]Item) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data = data
+	for k, v := range data {
+		s.add(k, &v)
+	}
 }
 
 func (s *Store) Clear() {

@@ -1,10 +1,8 @@
 package rdb
 
 import (
-	"encoding/gob"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -48,36 +46,13 @@ func (r *RDB) Save() error {
 	defer r.mu.Unlock()
 
 	rdbPath := r.config.GetRDBPath()
-	tempPath := rdbPath + ".temp"
 
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(rdbPath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
+	database := []Database{{Index: 0, Keys: r.store.Dump()}}
+	parser := NewRDBParser(rdbPath)
+	err := parser.SaveRDB(database)
 
-	// Create temporary file
-	file, err := os.Create(tempPath)
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	// Encode store data
-	encoder := gob.NewEncoder(file)
-	if err := encoder.Encode(r.store.Dump()); err != nil {
-		file.Close()
-		os.Remove(tempPath)
-		return fmt.Errorf("failed to encode data: %w", err)
-	}
-
-	if err := file.Close(); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	// Atomically rename temp file to target file
-	if err := os.Rename(tempPath, rdbPath); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("failed to rename temp file: %w", err)
+		return fmt.Errorf("failed to save file: %w", err)
 	}
 
 	return nil
@@ -89,21 +64,21 @@ func (r *RDB) Load() error {
 	defer r.mu.Unlock()
 
 	rdbPath := r.config.GetRDBPath()
-	file, err := os.Open(rdbPath)
+	parser := NewRDBParser(rdbPath)
+
+	db, err := parser.ParseRDB()
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // No existing RDB file is not an error
 		}
 		return fmt.Errorf("failed to open RDB file: %w", err)
 	}
-	defer file.Close()
 
-	decoder := gob.NewDecoder(file)
-	data := make(map[string]storage.Item)
-	if err := decoder.Decode(&data); err != nil {
-		return fmt.Errorf("failed to decode RDB data: %w", err)
+	if len(db) > 0 {
+		data := db[0].Keys
+		r.store.Restore(data)
 	}
 
-	r.store.Restore(data)
+	// return fmt.Errorf("failed to decode RDB data: %w", err)
 	return nil
 }

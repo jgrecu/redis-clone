@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -120,9 +119,8 @@ func (c *ConfigGetCommand) Execute(args []string) ([]byte, error) {
 	}
 
 	// Return array with parameter name and value
-	response := []byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
-		len(param), param, len(value), value))
-	return response, nil
+	response := []string{param, value}
+	return c.writer.WriteArray(response), nil
 }
 
 // SaveCommand implements SAVE command
