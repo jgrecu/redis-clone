@@ -62,7 +62,8 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to load RDB: %w", err)
 	}
 
-	l, err := net.Listen("tcp", s.config.Address)
+	address := fmt.Sprintf("%s:%d", s.config.Address, s.config.Port)
+	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}

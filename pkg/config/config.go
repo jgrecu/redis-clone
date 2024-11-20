@@ -12,6 +12,7 @@ type Config struct {
 	mu sync.RWMutex
 	// Server configs
 	Address         string
+	Port            uint
 	CleanupInterval time.Duration
 
 	// RDB configs
@@ -23,7 +24,8 @@ type Config struct {
 // NewConfig creates a new configuration with default values
 func NewConfig() *Config {
 	return &Config{
-		Address:         "0.0.0.0:6379",
+		Address:         "0.0.0.0",
+		Port:            6379,
 		CleanupInterval: time.Minute,
 		Dir:             ".",
 		DbFilename:      "dump.rdb",

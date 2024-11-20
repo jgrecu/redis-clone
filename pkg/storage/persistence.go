@@ -136,7 +136,7 @@ func (s *Store) Restore(data map[string]Item) {
 func (s *Store) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data = make(map[string]Item)
+	clear(s.data)
 }
 
 // Keys return the list of current keys in store data matching the pattern

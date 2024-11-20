@@ -16,6 +16,7 @@ func main() {
 	// Define command line flags
 	flag.StringVar(&cfg.Dir, "dir", cfg.Dir, "Directorey for RDB files")
 	flag.StringVar(&cfg.DbFilename, "dbfilename", cfg.DbFilename, "Filename for the RDB file")
+	flag.UintVar(&cfg.Port, "port", cfg.Port, "Port for running the server")
 	flag.Parse()
 
 	// Convert relative path to absolute path
