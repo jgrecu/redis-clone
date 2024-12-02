@@ -69,7 +69,7 @@ func (s *Server) Start() error {
 	}
 	defer l.Close()
 
-	log.Printf("Server listening on %s", s.config.Address)
+	log.Printf("Server listening on %s", address)
 
 	for {
 		conn, err := l.Accept()
