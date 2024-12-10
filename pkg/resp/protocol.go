@@ -138,6 +138,11 @@ func (w *Writer) WriteSimpleString(s string) []byte {
 	return []byte(fmt.Sprintf("+%s\r\n", s))
 }
 
+// WriteBulkString writes a bulk string response
+func (w *Writer) WriteBulkString(s string) []byte {
+	return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
+}
+
 // WriteError writes an error response
 func (w *Writer) WriteError(s string) []byte {
 	return []byte(fmt.Sprintf("-%s\r\n", s))

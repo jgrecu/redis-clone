@@ -165,3 +165,28 @@ func (c *KeysCommand) Execute(args []string) ([]byte, error) {
 	}
 	return c.writer.WriteArray(keys), nil
 }
+
+// InfoCommand implements INFO command
+type InfoCommand struct {
+	writer *resp.Writer
+}
+
+func NewInfoCommand(writer *resp.Writer) *InfoCommand {
+	return &InfoCommand{
+		writer: writer,
+	}
+}
+
+func (i *InfoCommand) Execute(args []string) ([]byte, error) {
+	str := `# Replication
+role:master
+connected_slaves:0
+master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+master_repl_offset:0
+second_repl_offset:-1
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:`
+	return i.writer.WriteBulkString(str), nil
+}

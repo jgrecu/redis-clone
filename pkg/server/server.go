@@ -53,6 +53,7 @@ func (s *Server) registerCommands() {
 	s.commands["config"] = NewConfigGetCommand(s.writer, s.config)
 	s.commands["save"] = NewSaveCommand(s.writer, s.rdb)
 	s.commands["keys"] = NewKeysCommand(s.writer, s.store)
+	s.commands["info"] = NewInfoCommand(s.writer)
 }
 
 // Start starts the Redis server
