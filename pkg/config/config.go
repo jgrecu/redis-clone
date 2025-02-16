@@ -54,12 +54,14 @@ func (c *Config) Get(param string) (string, error) {
 		return c.DbFilename, nil
 	case "save":
 		return fmt.Sprintf("%ds", c.SaveInterval/time.Second), nil
+	case "port":
+		return strconv.FormatUint(uint64(c.Port), 10), nil
 	case "role":
 		return c.Role, nil
 	case "masterhost":
 		return c.MasterHost, nil
 	case "masterport":
-		return fmt.Sprintf("%d", c.MasterPort), nil
+		return strconv.FormatUint(uint64(c.MasterPort), 10), nil
 	default:
 		return "", fmt.Errorf("unknown config parameter: %s", param)
 	}
@@ -95,6 +97,13 @@ func (c *Config) Set(param, value string) error {
 		}
 		c.SaveInterval = duration
 		return nil
+	case "port":
+		port, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid port value: %s", value)
+		}
+		c.Port = uint(port)
+		return nil
 	case "role":
 		if value != "master" && value != "slave" {
 			return fmt.Errorf("invalid role: %s", value)
@@ -107,7 +116,7 @@ func (c *Config) Set(param, value string) error {
 	case "masterport":
 		port, err := strconv.ParseUint(value, 10, 32)
 		if err != nil {
-			return fmt.Errorf("invalid master port: %w", err)
+			return fmt.Errorf("invalid masterport value: %s", value)
 		}
 		c.MasterPort = uint(port)
 		return nil
