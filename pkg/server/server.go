@@ -39,21 +39,21 @@ func NewServer(cfg *config.Config) *Server {
 	// Initialize RDB
 	s.rdb = rdb.NewRDB(cfg, store)
 
-	// Register commandss
+	// Register commands
 	s.registerCommands()
 
 	return s
 }
 
 func (s *Server) registerCommands() {
-	s.commands["ping"] = NewPingCommand(s.writer)
-	s.commands["echo"] = NewEchoCommand(s.writer)
-	s.commands["set"] = NewSetCommand(s.writer, s.store)
-	s.commands["get"] = NewGetCommand(s.writer, s.store)
-	s.commands["config"] = NewConfigGetCommand(s.writer, s.config)
-	s.commands["save"] = NewSaveCommand(s.writer, s.rdb)
-	s.commands["keys"] = NewKeysCommand(s.writer, s.store)
-	s.commands["info"] = NewInfoCommand(s.writer)
+	s.commands["PING"] = NewPingCommand(s.writer)
+	s.commands["ECHO"] = NewEchoCommand(s.writer)
+	s.commands["SET"] = NewSetCommand(s.writer, s.store)
+	s.commands["GET"] = NewGetCommand(s.writer, s.store)
+	s.commands["CONFIG"] = NewConfigGetCommand(s.writer, s.config)
+	s.commands["SAVE"] = NewSaveCommand(s.writer, s.rdb)
+	s.commands["KEYS"] = NewKeysCommand(s.writer, s.store)
+	s.commands["INFO"] = NewInfoCommand(s.writer, s.config)
 }
 
 // Start starts the Redis server
@@ -114,10 +114,10 @@ func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 		return nil, fmt.Errorf("empty command")
 	}
 
-	cmdName := strings.ToLower(msg.Content[0])
+	cmdName := strings.ToUpper(msg.Content[0])
 	cmd, exists := s.commands[cmdName]
 	if !exists {
-		return s.writer.WriteError("unknown command"), nil
+		return s.writer.WriteError(fmt.Sprintf("ERR unknown command '%s'", cmdName)), nil
 	}
 
 	return cmd.Execute(msg.Content)
