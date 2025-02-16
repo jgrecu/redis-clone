@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -169,24 +170,32 @@ func (c *KeysCommand) Execute(args []string) ([]byte, error) {
 // InfoCommand implements INFO command
 type InfoCommand struct {
 	writer *resp.Writer
+	config *config.Config
 }
 
-func NewInfoCommand(writer *resp.Writer) *InfoCommand {
+func NewInfoCommand(writer *resp.Writer, config *config.Config) *InfoCommand {
 	return &InfoCommand{
 		writer: writer,
+		config: config,
 	}
 }
 
 func (i *InfoCommand) Execute(args []string) ([]byte, error) {
-	str := `# Replication
-role:master
-connected_slaves:0
-master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-master_repl_offset:0
-second_repl_offset:-1
-repl_backlog_active:0
-repl_backlog_size:1048576
-repl_backlog_first_byte_offset:0
-repl_backlog_histlen:`
-	return i.writer.WriteBulkString(str), nil
+	var info strings.Builder
+	info.WriteString("# Replication\r\n")
+
+	// Add role information
+	info.WriteString(fmt.Sprintf("role:%s\r\n", i.config.Role))
+
+	if i.config.Role == "master" {
+		info.WriteString("connected_slaves:0\r\n")
+		info.WriteString("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n")
+		info.WriteString("master_repl_offset:0\r\n")
+	} else {
+		info.WriteString(fmt.Sprintf("master_host:%s\r\n", i.config.MasterHost))
+		info.WriteString(fmt.Sprintf("master_port:%d\r\n", i.config.MasterPort))
+		info.WriteString("master_link_status:up\r\n")
+	}
+
+	return i.writer.WriteBulkString(info.String()), nil
 }
