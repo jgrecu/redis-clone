@@ -1,8 +1,10 @@
 package rdb
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,6 +101,117 @@ func TestRDB_SaveAndLoad(t *testing.T) {
 	}
 }
 
+func TestRDB_BackgroundSave(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "rdb-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create config with very short save interval
+	cfg := config.NewConfig()
+	cfg.Dir = tempDir
+	cfg.DbFilename = "test.rdb"
+	cfg.SaveInterval = 100 * time.Millisecond
+
+	// Create store with test data
+	store := storage.NewStore(time.Hour)
+	store.Set("key1", "value1", 0)
+
+	// Create RDB instance (this starts background save)
+	_ = NewRDB(cfg, store) // Background save starts automatically
+
+	// Wait for at least one background save
+	time.Sleep(150 * time.Millisecond)
+
+	// Verify file exists
+	rdbPath := filepath.Join(tempDir, "test.rdb")
+	if _, err := os.Stat(rdbPath); os.IsNotExist(err) {
+		t.Error("Background save did not create RDB file")
+	}
+
+	// Add more data and wait for another save
+	store.Set("key2", "value2", 0)
+	time.Sleep(150 * time.Millisecond)
+
+	// Load data into new store to verify background save worked
+	newStore := storage.NewStore(time.Hour)
+	newRDB := NewRDB(cfg, newStore)
+	err = newRDB.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify both keys were saved
+	expectedData := map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+	for key, expectedValue := range expectedData {
+		if val, exists := newStore.Get(key); !exists || val != expectedValue {
+			t.Errorf("Background save did not persist key %s correctly, got %s, want %s", key, val, expectedValue)
+		}
+	}
+}
+
+func TestRDB_ConcurrentAccess(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "rdb-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create config
+	cfg := config.NewConfig()
+	cfg.Dir = tempDir
+	cfg.DbFilename = "test.rdb"
+
+	// Create store
+	store := storage.NewStore(time.Hour)
+	rdb := NewRDB(cfg, store)
+
+	// Number of concurrent operations
+	const numOps = 100
+	var wg sync.WaitGroup
+	wg.Add(3) // For save, load, and set goroutines
+
+	// Concurrent saves
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numOps; i++ {
+			err := rdb.Save()
+			if err != nil {
+				t.Errorf("Concurrent Save() error = %v", err)
+			}
+		}
+	}()
+
+	// Concurrent loads
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numOps; i++ {
+			err := rdb.Load()
+			if err != nil {
+				t.Errorf("Concurrent Load() error = %v", err)
+			}
+		}
+	}()
+
+	// Concurrent data modifications
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numOps; i++ {
+			key := fmt.Sprintf("key%d", i)
+			store.Set(key, fmt.Sprintf("value%d", i), 0)
+			time.Sleep(time.Millisecond) // Small delay to ensure some overlap
+		}
+	}()
+
+	wg.Wait()
+}
+
 func TestRDB_LoadNonExistent(t *testing.T) {
 	// Create a temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "rdb-test")
@@ -180,38 +293,3 @@ func TestRDB_SaveError(t *testing.T) {
 	}
 }
 
-func TestRDB_BackgroundSave(t *testing.T) {
-	// Create a temporary directory for test files
-	tempDir, err := os.MkdirTemp("", "rdb-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Create parent directory if it doesn't exist
-	err = os.MkdirAll(tempDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create parent directory: %v", err)
-	}
-
-	// Create config with very short save interval
-	cfg := config.NewConfig()
-	cfg.Dir = tempDir
-	cfg.DbFilename = "test.rdb"
-	cfg.SaveInterval = time.Millisecond * 100
-
-	store := storage.NewStore(time.Hour)
-	store.Set("key1", "value1", 0)
-
-	// Create RDB instance and wait for background save
-	NewRDB(cfg, store)
-
-	// Wait for background save to occur
-	time.Sleep(time.Millisecond * 150)
-
-	// Verify file exists
-	rdbPath := filepath.Join(tempDir, "test.rdb")
-	if _, err := os.Stat(rdbPath); os.IsNotExist(err) {
-		t.Error("Background save did not create RDB file")
-	}
-}
