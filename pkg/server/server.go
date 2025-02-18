@@ -14,12 +14,13 @@ import (
 
 // Server represents the Redis server
 type Server struct {
-	config   *config.Config
-	store    *storage.Store
-	rdb      *rdb.RDB
-	parser   *resp.Parser
-	writer   *resp.Writer
-	commands map[string]Command
+	config         *config.Config
+	store          *storage.Store
+	rdb            *rdb.RDB
+	parser         *resp.Parser
+	writer         *resp.Writer
+	commands       map[string]Command
+	masterConn     net.Conn
 }
 
 // NewServer creates a new Redis server
@@ -56,11 +57,43 @@ func (s *Server) registerCommands() {
 	s.commands["INFO"] = NewInfoCommand(s.writer, s.config)
 }
 
+// connectToMaster establishes connection to master and performs handshake
+func (s *Server) connectToMaster() error {
+	masterAddr := fmt.Sprintf("%s:%d", s.config.MasterHost, s.config.MasterPort)
+	conn, err := net.Dial("tcp", masterAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to master: %w", err)
+	}
+
+	// Store the connection for future use
+	s.masterConn = conn
+
+	// Send PING command
+	pingCmd := []string{"PING"}
+	pingMsg := s.writer.WriteArray(pingCmd)
+	_, err = conn.Write(pingMsg)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to send PING to master: %w", err)
+	}
+
+	log.Printf("Connected to master at %s and sent PING", masterAddr)
+	return nil
+}
+
 // Start starts the Redis server
 func (s *Server) Start() error {
 	// Load existing RDB file if it exists
 	if err := s.rdb.Load(); err != nil {
 		return fmt.Errorf("failed to load RDB: %w", err)
+	}
+
+	// If we're a replica, connect to master first
+	if s.config.Role == "slave" {
+		if err := s.connectToMaster(); err != nil {
+			return err
+		}
 	}
 
 	address := fmt.Sprintf("%s:%d", s.config.Address, s.config.Port)
