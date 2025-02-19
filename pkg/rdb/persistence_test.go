@@ -43,12 +43,6 @@ func TestRDB_SaveAndLoad(t *testing.T) {
 	cfg.DbFilename = "test.rdb"
 	cfg.SaveInterval = time.Millisecond * 100 // Short interval for testing
 
-	// Create parent directory if it doesn't exist
-	err = os.MkdirAll(tempDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create parent directory: %v", err)
-	}
-
 	// Create store with test data
 	store := storage.NewStore(time.Hour)
 	store.Set("key1", "value1", 0)
@@ -292,4 +286,3 @@ func TestRDB_SaveError(t *testing.T) {
 		t.Error("Save() error = nil, want error for invalid directory")
 	}
 }
-
