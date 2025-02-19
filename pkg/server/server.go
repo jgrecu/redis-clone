@@ -123,6 +123,24 @@ func (s *Server) connectToMaster() error {
 		return fmt.Errorf("failed to read REPLCONF capa response from master: %w", err)
 	}
 
+	// Send PSYNC command
+	psyncCmd := []string{"PSYNC", "?", "-1"}
+	psyncMsg := s.writer.WriteArray(psyncCmd)
+	_, err = conn.Write(psyncMsg)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to send PSYNC to master: %w", err)
+	}
+
+	// Read PSYNC response (ignored for now as per requirements)
+	_, err = conn.Read(respBuf)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to read PSYNC response from master: %w", err)
+	}
+
 	log.Printf("Connected to master at %s and completed handshake", masterAddr)
 	return nil
 }
