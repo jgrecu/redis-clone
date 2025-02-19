@@ -14,13 +14,13 @@ import (
 
 // Server represents the Redis server
 type Server struct {
-	config         *config.Config
-	store          *storage.Store
-	rdb            *rdb.RDB
-	parser         *resp.Parser
-	writer         *resp.Writer
-	commands       map[string]Command
-	masterConn     net.Conn
+	config     *config.Config
+	store      *storage.Store
+	rdb        *rdb.RDB
+	parser     *resp.Parser
+	writer     *resp.Writer
+	commands   map[string]Command
+	masterConn net.Conn
 }
 
 // NewServer creates a new Redis server
@@ -78,7 +78,52 @@ func (s *Server) connectToMaster() error {
 		return fmt.Errorf("failed to send PING to master: %w", err)
 	}
 
-	log.Printf("Connected to master at %s and sent PING", masterAddr)
+	// Read PING response
+	respBuf := make([]byte, 512)
+	_, err = conn.Read(respBuf)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to read PING response from master: %w", err)
+	}
+
+	// Send first REPLCONF command (listening-port)
+	replconfPortCmd := []string{"REPLCONF", "listening-port", fmt.Sprintf("%d", s.config.Port)}
+	replconfPortMsg := s.writer.WriteArray(replconfPortCmd)
+	_, err = conn.Write(replconfPortMsg)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to send REPLCONF listening-port to master: %w", err)
+	}
+
+	// Read first REPLCONF response
+	_, err = conn.Read(respBuf)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to read REPLCONF listening-port response from master: %w", err)
+	}
+
+	// Send second REPLCONF command (capabilities)
+	replconfCapaCmd := []string{"REPLCONF", "capa", "psync2"}
+	replconfCapaMsg := s.writer.WriteArray(replconfCapaCmd)
+	_, err = conn.Write(replconfCapaMsg)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to send REPLCONF capa to master: %w", err)
+	}
+
+	// Read second REPLCONF response
+	_, err = conn.Read(respBuf)
+	if err != nil {
+		conn.Close()
+		s.masterConn = nil
+		return fmt.Errorf("failed to read REPLCONF capa response from master: %w", err)
+	}
+
+	log.Printf("Connected to master at %s and completed handshake", masterAddr)
 	return nil
 }
 
