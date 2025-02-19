@@ -55,6 +55,30 @@ func TestReadLength(t *testing.T) {
 			want:    0,
 			wantErr: true,
 		},
+		{
+			name:    "EOF during read",
+			input:   []byte{},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name:    "EOF during 14-bit read",
+			input:   []byte{0x40},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name:    "EOF during 32-bit read",
+			input:   []byte{0x80, 0x00, 0x00},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name:    "maximum 6-bit value",
+			input:   []byte{0x3F},
+			want:    63,
+			wantErr: false,
+		},
 	}
 
 	parser := NewRDBParser("")
@@ -98,6 +122,36 @@ func TestReadString(t *testing.T) {
 			want:    "",
 			wantErr: true,
 		},
+		{
+			name:    "EOF during content read",
+			input:   []byte{0x05, 'h', 'e'},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name: "long string",
+			input: func() []byte {
+				content := make([]byte, 1000)
+				for i := range content {
+					content[i] = byte('a' + (i % 26))
+				}
+				return append([]byte{0x80, 0x00, 0x00, 0x03, 0xE8}, content...)
+			}(),
+			want: func() string {
+				content := make([]byte, 1000)
+				for i := range content {
+					content[i] = byte('a' + (i % 26))
+				}
+				return string(content)
+			}(),
+			wantErr: false,
+		},
+		{
+			name:    "partial length read",
+			input:   []byte{0x40},
+			want:    "",
+			wantErr: true,
+		},
 	}
 
 	parser := NewRDBParser("")
@@ -121,6 +175,7 @@ func TestSaveAndParseRDB(t *testing.T) {
 		name     string
 		testData map[string]storage.Item
 		wantErr  bool
+		setup    func(t *testing.T) (string, func())
 	}{
 		{
 			name: "basic string values",
@@ -164,6 +219,44 @@ func TestSaveAndParseRDB(t *testing.T) {
 			name:     "with empty database",
 			testData: map[string]storage.Item{},
 			wantErr:  false,
+		},
+		{
+			name: "with corrupted data",
+			testData: map[string]storage.Item{
+				"key": {
+					Value:  string([]byte{0xFF, 0xFF, 0xFF}),
+					Expire: nil,
+					Type:   storage.String,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "with special characters",
+			testData: map[string]storage.Item{
+				"key\n\r\t": {
+					Value:  "value\x00\x01\x02",
+					Expire: nil,
+					Type:   storage.String,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "with expired items",
+			testData: map[string]storage.Item{
+				"expired": {
+					Value:  "value",
+					Expire: ptr(time.Now().Add(-time.Hour)), // already expired
+					Type:   storage.String,
+				},
+				"not-expired": {
+					Value:  "value",
+					Expire: ptr(time.Now().Add(time.Hour)),
+					Type:   storage.String,
+				},
+			},
+			wantErr: false,
 		},
 	}
 
@@ -384,6 +477,56 @@ func TestWriteString(t *testing.T) {
 			}
 			if !bytes.Equal(buf.Bytes(), tt.want) {
 				t.Errorf("writeString() = %v, want %v", buf.Bytes(), tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRDB_EdgeCases(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "rdb-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tests := []struct {
+		name    string
+		content []byte
+		wantErr bool
+	}{
+		{
+			name:    "empty file",
+			content: []byte{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid header",
+			content: []byte("INVALID00"),
+			wantErr: true,
+		},
+		{
+			name:    "truncated file",
+			content: []byte("REDIS0011\xFE"),
+			wantErr: true,
+		},
+		{
+			name:    "corrupted length",
+			content: append([]byte("REDIS0011\xFE"), 0xFF, 0xFF),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdbPath := filepath.Join(tempDir, "test.rdb")
+			if err := os.WriteFile(rdbPath, tt.content, 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			parser := NewRDBParser(rdbPath)
+			_, err := parser.ParseRDB()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseRDB() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
