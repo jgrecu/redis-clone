@@ -167,6 +167,19 @@ func (c *KeysCommand) Execute(args []string) ([]byte, error) {
 	return c.writer.WriteArray(keys), nil
 }
 
+// ReplConfCommand implements the REPLCONF command
+type ReplConfCommand struct {
+	writer *resp.Writer
+}
+
+func NewReplConfCommand(writer *resp.Writer) *ReplConfCommand {
+	return &ReplConfCommand{writer: writer}
+}
+
+func (c *ReplConfCommand) Execute(args []string) ([]byte, error) {
+	return c.writer.WriteSimpleString("OK"), nil
+}
+
 // InfoCommand implements INFO command
 type InfoCommand struct {
 	writer *resp.Writer

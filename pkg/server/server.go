@@ -55,6 +55,7 @@ func (s *Server) registerCommands() {
 	s.commands["SAVE"] = NewSaveCommand(s.writer, s.rdb)
 	s.commands["KEYS"] = NewKeysCommand(s.writer, s.store)
 	s.commands["INFO"] = NewInfoCommand(s.writer, s.config)
+	s.commands["REPLCONF"] = NewReplConfCommand(s.writer)
 }
 
 // connectToMaster establishes connection to master and performs handshake
