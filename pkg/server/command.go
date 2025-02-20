@@ -180,6 +180,26 @@ func (c *ReplConfCommand) Execute(args []string) ([]byte, error) {
 	return c.writer.WriteSimpleString("OK"), nil
 }
 
+// PSyncCommand implements the PSYNC command
+type PSyncCommand struct {
+	writer *resp.Writer
+}
+
+func NewPSyncCommand(writer *resp.Writer) *PSyncCommand {
+	return &PSyncCommand{writer: writer}
+}
+
+func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
+	if len(args) != 3 {
+		return c.writer.WriteError("wrong number of arguments for PSYNC"), nil
+	}
+
+	// Hardcoded replication ID as per requirements
+	replID := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	response := fmt.Sprintf("FULLRESYNC %s 0", replID)
+	return c.writer.WriteSimpleString(response), nil
+}
+
 // InfoCommand implements INFO command
 type InfoCommand struct {
 	writer *resp.Writer
