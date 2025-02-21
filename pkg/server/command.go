@@ -189,6 +189,18 @@ func NewPSyncCommand(writer *resp.Writer) *PSyncCommand {
 	return &PSyncCommand{writer: writer}
 }
 
+func (c *PSyncCommand) getEmptyRDBFile() []byte {
+	// Minimal valid empty RDB file
+	rdb := []byte{
+		'R', 'E', 'D', 'I', 'S', '0', '0', '0', '9', // RDB version 9 header
+		0xFF,                                           // EOF marker
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // CRC64
+	}
+
+	// Format as per Redis protocol: $<length>\r\n<contents>
+	return []byte(fmt.Sprintf("$%d\r\n%s", len(rdb), rdb))
+}
+
 func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
 	if len(args) != 3 {
 		return c.writer.WriteError("wrong number of arguments for PSYNC"), nil
@@ -197,7 +209,10 @@ func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
 	// Hardcoded replication ID as per requirements
 	replID := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	response := fmt.Sprintf("FULLRESYNC %s 0", replID)
-	return c.writer.WriteSimpleString(response), nil
+	
+	// Combine FULLRESYNC response with RDB file
+	fullResponse := append(c.writer.WriteSimpleString(response), c.getEmptyRDBFile()...)
+	return fullResponse, nil
 }
 
 // InfoCommand implements INFO command
