@@ -14,13 +14,15 @@ import (
 
 // Server represents the Redis server
 type Server struct {
-	config     *config.Config
-	store      *storage.Store
-	rdb        *rdb.RDB
-	parser     *resp.Parser
-	writer     *resp.Writer
-	commands   map[string]Command
-	masterConn net.Conn
+	config      *config.Config
+	store       *storage.Store
+	rdb         *rdb.RDB
+	parser      *resp.Parser
+	writer      *resp.Writer
+	commands    map[string]Command
+	masterConn  net.Conn
+	replicaConn net.Conn
+	currentConn net.Conn
 }
 
 // NewServer creates a new Redis server
@@ -54,9 +56,9 @@ func (s *Server) registerCommands() {
 	s.commands["CONFIG"] = NewConfigGetCommand(s.writer, s.config)
 	s.commands["SAVE"] = NewSaveCommand(s.writer, s.rdb)
 	s.commands["KEYS"] = NewKeysCommand(s.writer, s.store)
-	s.commands["INFO"] = NewInfoCommand(s.writer, s.config)
-	s.commands["REPLCONF"] = NewReplConfCommand(s.writer)
-	s.commands["PSYNC"] = NewPSyncCommand(s.writer)
+	s.commands["INFO"] = NewInfoCommand(s.writer, s.config, s)
+	s.commands["REPLCONF"] = NewReplConfCommand(s.writer, s)
+	s.commands["PSYNC"] = NewPSyncCommand(s.writer, s)
 }
 
 // connectToMaster establishes connection to master and performs handshake
@@ -184,6 +186,10 @@ func (s *Server) Start() error {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
+	// Store the current connection
+	s.currentConn = conn
+	defer func() { s.currentConn = nil }()
+
 	buf := make([]byte, 512)
 	for {
 		n, err := conn.Read(buf)
@@ -207,6 +213,27 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+// isWriteCommand returns true if the command is a write command that should be propagated
+func (s *Server) isWriteCommand(cmdName string) bool {
+	writeCommands := map[string]bool{
+		"SET": true,
+		"DEL": true,
+	}
+	return writeCommands[cmdName]
+}
+
+// propagateToReplica sends a command to the replica if connected
+func (s *Server) propagateToReplica(msg *resp.Message) error {
+	if s.replicaConn == nil {
+		return nil
+	}
+
+	// Convert message to RESP array format
+	cmdArray := s.writer.WriteArray(msg.Content)
+	_, err := s.replicaConn.Write(cmdArray)
+	return err
+}
+
 func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 	if len(msg.Content) == 0 {
 		return nil, fmt.Errorf("empty command")
@@ -218,5 +245,20 @@ func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 		return s.writer.WriteError(fmt.Sprintf("ERR unknown command '%s'", cmdName)), nil
 	}
 
-	return cmd.Execute(msg.Content)
+	// Execute the command
+	response, err := cmd.Execute(msg.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	// If this is a write command and we're not processing a command from a replica,
+	// propagate it to the replica
+	if s.isWriteCommand(cmdName) && s.replicaConn != nil {
+		if err := s.propagateToReplica(msg); err != nil {
+			log.Printf("Error propagating command to replica: %v", err)
+			// Don't return error to client as the command was executed successfully
+		}
+	}
+
+	return response, nil
 }

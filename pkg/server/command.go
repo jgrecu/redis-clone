@@ -170,23 +170,30 @@ func (c *KeysCommand) Execute(args []string) ([]byte, error) {
 // ReplConfCommand implements the REPLCONF command
 type ReplConfCommand struct {
 	writer *resp.Writer
+	server *Server
 }
 
-func NewReplConfCommand(writer *resp.Writer) *ReplConfCommand {
-	return &ReplConfCommand{writer: writer}
+func NewReplConfCommand(writer *resp.Writer, server *Server) *ReplConfCommand {
+	return &ReplConfCommand{writer: writer, server: server}
 }
 
 func (c *ReplConfCommand) Execute(args []string) ([]byte, error) {
+	// Store the connection when first REPLCONF command is received
+	if c.server.replicaConn == nil {
+		// Get the connection from the current client
+		c.server.replicaConn = c.server.currentConn
+	}
 	return c.writer.WriteSimpleString("OK"), nil
 }
 
 // PSyncCommand implements the PSYNC command
 type PSyncCommand struct {
 	writer *resp.Writer
+	server *Server
 }
 
-func NewPSyncCommand(writer *resp.Writer) *PSyncCommand {
-	return &PSyncCommand{writer: writer}
+func NewPSyncCommand(writer *resp.Writer, server *Server) *PSyncCommand {
+	return &PSyncCommand{writer: writer, server: server}
 }
 
 func (c *PSyncCommand) getEmptyRDBFile() []byte {
@@ -205,11 +212,15 @@ func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
 	if len(args) != 3 {
 		return c.writer.WriteError("wrong number of arguments for PSYNC"), nil
 	}
+	// Store the connection if not already stored
+	if c.server.replicaConn == nil {
+		c.server.replicaConn = c.server.currentConn
+	}
 
 	// Hardcoded replication ID as per requirements
 	replID := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	response := fmt.Sprintf("FULLRESYNC %s 0", replID)
-	
+
 	// Combine FULLRESYNC response with RDB file
 	fullResponse := append(c.writer.WriteSimpleString(response), c.getEmptyRDBFile()...)
 	return fullResponse, nil
@@ -219,12 +230,14 @@ func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
 type InfoCommand struct {
 	writer *resp.Writer
 	config *config.Config
+	server *Server
 }
 
-func NewInfoCommand(writer *resp.Writer, config *config.Config) *InfoCommand {
+func NewInfoCommand(writer *resp.Writer, config *config.Config, server *Server) *InfoCommand {
 	return &InfoCommand{
 		writer: writer,
 		config: config,
+		server: server,
 	}
 }
 
@@ -236,7 +249,11 @@ func (i *InfoCommand) Execute(args []string) ([]byte, error) {
 	info.WriteString(fmt.Sprintf("role:%s\r\n", i.config.Role))
 
 	if i.config.Role == "master" {
-		info.WriteString("connected_slaves:0\r\n")
+		connectedSlaves := 0
+		if i.server.replicaConn != nil {
+			connectedSlaves = 1
+		}
+		info.WriteString(fmt.Sprintf("connected_slaves:%d\r\n", connectedSlaves))
 		info.WriteString("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n")
 		info.WriteString("master_repl_offset:0\r\n")
 	} else {
