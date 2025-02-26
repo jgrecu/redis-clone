@@ -14,13 +14,15 @@ import (
 
 // Server represents the Redis server
 type Server struct {
-	config     *config.Config
-	store      *storage.Store
-	rdb        *rdb.RDB
-	parser     *resp.Parser
-	writer     *resp.Writer
-	commands   map[string]Command
-	masterConn net.Conn
+	config      *config.Config
+	store       *storage.Store
+	rdb         *rdb.RDB
+	parser      *resp.Parser
+	writer      *resp.Writer
+	commands    map[string]Command
+	masterConn  net.Conn
+	replicas    map[net.Conn]bool
+	currentConn net.Conn
 }
 
 // NewServer creates a new Redis server
@@ -35,6 +37,7 @@ func NewServer(cfg *config.Config) *Server {
 		parser:   parser,
 		writer:   writer,
 		commands: make(map[string]Command),
+		replicas: make(map[net.Conn]bool),
 	}
 
 	// Initialize RDB
@@ -49,14 +52,14 @@ func NewServer(cfg *config.Config) *Server {
 func (s *Server) registerCommands() {
 	s.commands["PING"] = NewPingCommand(s.writer)
 	s.commands["ECHO"] = NewEchoCommand(s.writer)
-	s.commands["SET"] = NewSetCommand(s.writer, s.store)
+	s.commands["SET"] = NewSetCommand(s.writer, s.store, s)
 	s.commands["GET"] = NewGetCommand(s.writer, s.store)
 	s.commands["CONFIG"] = NewConfigGetCommand(s.writer, s.config)
 	s.commands["SAVE"] = NewSaveCommand(s.writer, s.rdb)
 	s.commands["KEYS"] = NewKeysCommand(s.writer, s.store)
-	s.commands["INFO"] = NewInfoCommand(s.writer, s.config)
-	s.commands["REPLCONF"] = NewReplConfCommand(s.writer)
-	s.commands["PSYNC"] = NewPSyncCommand(s.writer)
+	s.commands["INFO"] = NewInfoCommand(s.writer, s.config, s)
+	s.commands["REPLCONF"] = NewReplConfCommand(s.writer, s)
+	s.commands["PSYNC"] = NewPSyncCommand(s.writer, s)
 }
 
 // connectToMaster establishes connection to master and performs handshake
@@ -182,7 +185,17 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		// If this was a replica, remove it from our list
+		if s.IsReplica(conn) {
+			s.RemoveReplica(conn)
+		}
+		conn.Close()
+	}()
+
+	// Store the current connection
+	s.currentConn = conn
+	defer func() { s.currentConn = nil }()
 
 	buf := make([]byte, 512)
 	for {
@@ -207,6 +220,53 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+// isWriteCommand returns true if the command is a write command that should be propagated
+func (s *Server) isWriteCommand(cmdName string) bool {
+	writeCommands := map[string]bool{
+		"SET": true,
+		"DEL": true,
+	}
+	return writeCommands[cmdName]
+}
+
+// propagateToReplicas sends a command to all connected replicas
+func (s *Server) propagateToReplicas(msg *resp.Message) error {
+	if len(s.replicas) == 0 {
+		return nil
+	}
+
+	// Convert message to RESP array format
+	cmdArray := s.writer.WriteArray(msg.Content)
+
+	var lastErr error
+	for replica := range s.replicas {
+		_, err := replica.Write(cmdArray)
+		if err != nil {
+			// If we fail to write to a replica, remove it from our list
+			delete(s.replicas, replica)
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// AddReplica adds a new replica connection
+func (s *Server) AddReplica(conn net.Conn) {
+	s.replicas[conn] = true
+	log.Printf("New replica connected from %s", conn.RemoteAddr())
+}
+
+// RemoveReplica removes a replica connection
+func (s *Server) RemoveReplica(conn net.Conn) {
+	delete(s.replicas, conn)
+	log.Printf("Replica disconnected from %s", conn.RemoteAddr())
+}
+
+// IsReplica checks if the given connection is a replica
+func (s *Server) IsReplica(conn net.Conn) bool {
+	return s.replicas[conn]
+}
+
 func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 	if len(msg.Content) == 0 {
 		return nil, fmt.Errorf("empty command")
@@ -218,5 +278,20 @@ func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 		return s.writer.WriteError(fmt.Sprintf("ERR unknown command '%s'", cmdName)), nil
 	}
 
-	return cmd.Execute(msg.Content)
+	// Execute the command
+	response, err := cmd.Execute(msg.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	// If this is a write command and we're a master, propagate it to all replicas
+	if s.isWriteCommand(cmdName) && s.config.Role == "master" {
+		log.Printf("[DEBUG_LOG] Propagating command %v to %d replicas", cmdName, len(s.replicas))
+		if err := s.propagateToReplicas(msg); err != nil {
+			log.Printf("Error propagating command to replicas: %v", err)
+			// Don't return error to client as the command was executed successfully
+		}
+	}
+
+	return response, nil
 }

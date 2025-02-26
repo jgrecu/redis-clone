@@ -50,10 +50,11 @@ func (c *EchoCommand) Execute(args []string) ([]byte, error) {
 type SetCommand struct {
 	writer *resp.Writer
 	store  *storage.Store
+	server *Server
 }
 
-func NewSetCommand(writer *resp.Writer, store *storage.Store) *SetCommand {
-	return &SetCommand{writer: writer, store: store}
+func NewSetCommand(writer *resp.Writer, store *storage.Store, server *Server) *SetCommand {
+	return &SetCommand{writer: writer, store: store, server: server}
 }
 
 func (c *SetCommand) Execute(args []string) ([]byte, error) {
@@ -170,23 +171,69 @@ func (c *KeysCommand) Execute(args []string) ([]byte, error) {
 // ReplConfCommand implements the REPLCONF command
 type ReplConfCommand struct {
 	writer *resp.Writer
+	server *Server
 }
 
-func NewReplConfCommand(writer *resp.Writer) *ReplConfCommand {
-	return &ReplConfCommand{writer: writer}
+func NewReplConfCommand(writer *resp.Writer, server *Server) *ReplConfCommand {
+	return &ReplConfCommand{writer: writer, server: server}
 }
 
 func (c *ReplConfCommand) Execute(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return c.writer.WriteError("wrong number of arguments for REPLCONF"), nil
+	}
+
+	subcommand := strings.ToLower(args[1])
+	switch subcommand {
+	case "listening-port":
+		if len(args) != 3 {
+			return c.writer.WriteError("wrong number of arguments for REPLCONF listening-port"), nil
+		}
+		// Add the connection as a replica if it's not already one
+		if !c.server.IsReplica(c.server.currentConn) {
+			c.server.AddReplica(c.server.currentConn)
+		}
+	case "capa":
+		if len(args) != 3 {
+			return c.writer.WriteError("wrong number of arguments for REPLCONF capa"), nil
+		}
+		// Verify that the capability is supported
+		capability := strings.ToLower(args[2])
+		if capability != "psync2" {
+			return c.writer.WriteError("unsupported capability"), nil
+		}
+	default:
+		return c.writer.WriteError(fmt.Sprintf("unknown REPLCONF subcommand '%s'", subcommand)), nil
+	}
+
 	return c.writer.WriteSimpleString("OK"), nil
 }
 
 // PSyncCommand implements the PSYNC command
 type PSyncCommand struct {
 	writer *resp.Writer
+	server *Server
 }
 
-func NewPSyncCommand(writer *resp.Writer) *PSyncCommand {
-	return &PSyncCommand{writer: writer}
+func NewPSyncCommand(writer *resp.Writer, server *Server) *PSyncCommand {
+	return &PSyncCommand{writer: writer, server: server}
+}
+
+func (c *PSyncCommand) getEmptyRDBFile() []byte {
+	// Create a buffer with exactly 18 bytes:
+	// - 9 bytes for "REDIS0009"
+	// - 1 byte for EOF marker (0xFF)
+	// - 8 bytes for CRC64 checksum (zeros)
+	rdb := make([]byte, 18)
+
+	// Copy "REDIS0009" into the first 9 bytes
+	copy(rdb[0:9], []byte("REDIS0009"))
+
+	// Add EOF marker at position 9
+	rdb[9] = 0xFF
+
+	// Leave remaining 8 bytes as zeros (CRC64 checksum)
+	return rdb
 }
 
 func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
@@ -194,22 +241,50 @@ func (c *PSyncCommand) Execute(args []string) ([]byte, error) {
 		return c.writer.WriteError("wrong number of arguments for PSYNC"), nil
 	}
 
+	// Add the connection as a replica if it's not already one
+	if !c.server.IsReplica(c.server.currentConn) {
+		c.server.AddReplica(c.server.currentConn)
+	}
+
 	// Hardcoded replication ID as per requirements
 	replID := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	response := fmt.Sprintf("FULLRESYNC %s 0", replID)
-	return c.writer.WriteSimpleString(response), nil
+
+	// Send FULLRESYNC response and wait for it to be written
+	fullResponse := c.writer.WriteSimpleString(response)
+	_, err := c.server.currentConn.Write(fullResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write FULLRESYNC response: %w", err)
+	}
+
+	// Get RDB file bytes (exactly 18 bytes)
+	rdbFile := c.getEmptyRDBFile()
+
+	// Send RDB file as a bulk string with fixed length of 18 bytes (matching RDB file size)
+	bulkLen := "$18\r\n"
+	if _, err := c.server.currentConn.Write([]byte(bulkLen)); err != nil {
+		return nil, fmt.Errorf("failed to write RDB length: %w", err)
+	}
+
+	if _, err := c.server.currentConn.Write(rdbFile); err != nil {
+		return nil, fmt.Errorf("failed to write RDB file: %w", err)
+	}
+
+	return nil, nil
 }
 
 // InfoCommand implements INFO command
 type InfoCommand struct {
 	writer *resp.Writer
 	config *config.Config
+	server *Server
 }
 
-func NewInfoCommand(writer *resp.Writer, config *config.Config) *InfoCommand {
+func NewInfoCommand(writer *resp.Writer, config *config.Config, server *Server) *InfoCommand {
 	return &InfoCommand{
 		writer: writer,
 		config: config,
+		server: server,
 	}
 }
 
@@ -221,7 +296,8 @@ func (i *InfoCommand) Execute(args []string) ([]byte, error) {
 	info.WriteString(fmt.Sprintf("role:%s\r\n", i.config.Role))
 
 	if i.config.Role == "master" {
-		info.WriteString("connected_slaves:0\r\n")
+		connectedSlaves := len(i.server.replicas)
+		info.WriteString(fmt.Sprintf("connected_slaves:%d\r\n", connectedSlaves))
 		info.WriteString("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n")
 		info.WriteString("master_repl_offset:0\r\n")
 	} else {
