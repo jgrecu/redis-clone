@@ -10,16 +10,16 @@ import (
 
 // Config represents server configuration
 type Config struct {
-	mu             sync.RWMutex
+	mu sync.RWMutex
 	// Server configs
 	Address         string
 	Port            uint
 	CleanupInterval time.Duration
 
 	// Replication configs
-	Role         string // "master" or "slave"
-	MasterHost   string // Master's hostname
-	MasterPort   uint   // Master's port
+	Role       string // "master" or "slave"
+	MasterHost string // Master's hostname
+	MasterPort uint   // Master's port
 
 	// RDB configs
 	Dir          string        // The directory where RDB files are stored
