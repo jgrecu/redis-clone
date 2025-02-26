@@ -97,6 +97,124 @@ func TestReadLength(t *testing.T) {
 	}
 }
 
+func TestReadStringExtended(t *testing.T) {
+	// Generate a large string
+	largeStr := make([]byte, 1<<16) // 64KB string
+	for i := range largeStr {
+		largeStr[i] = byte('a' + (i % 26))
+	}
+
+	// Unicode test data
+	unicodeStr := "Hello, 世界! 🌍 привет"
+	unicodeBytes := []byte(unicodeStr)
+
+	tests := []struct {
+		name    string
+		input   []byte
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "large string",
+			input:   append([]byte{0x80, 0x00, 0x01, 0x00, 0x00}, largeStr...),
+			want:    string(largeStr),
+			wantErr: false,
+		},
+		{
+			name:    "unicode string",
+			input:   append([]byte{byte(len(unicodeBytes))}, unicodeBytes...),
+			want:    unicodeStr,
+			wantErr: false,
+		},
+		{
+			name:    "malformed - length exceeds data",
+			input:   []byte{0x10, 'h', 'e', 'l', 'l', 'o'},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "malformed - zero length with data",
+			input:   []byte{0x00, 'h', 'e', 'l', 'l', 'o'},
+			want:    "",
+			wantErr: false,
+		},
+	}
+
+	parser := NewRDBParser("")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := bufio.NewReader(bytes.NewReader(tt.input))
+			got, err := parser.ReadString(reader)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReadString() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				if len(got) > 100 {
+					t.Errorf("ReadString() length = %v, want length %v", len(got), len(tt.want))
+				} else {
+					t.Errorf("ReadString() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkRDBParser(b *testing.B) {
+	// Prepare test data
+	smallStr := []byte{0x05, 'h', 'e', 'l', 'l', 'o'}
+	largeStr := make([]byte, 1<<16) // 64KB string
+	for i := range largeStr {
+		largeStr[i] = byte('a' + (i % 26))
+	}
+	largeStrWithLen := append([]byte{0x80, 0x00, 0x01, 0x00, 0x00}, largeStr...)
+
+	parser := NewRDBParser("")
+
+	b.Run("ReadLength/6bit", func(b *testing.B) {
+		data := []byte{0x12}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			reader := bufio.NewReader(bytes.NewReader(data))
+			parser.ReadLength(reader)
+		}
+	})
+
+	b.Run("ReadLength/14bit", func(b *testing.B) {
+		data := []byte{0x40, 0x02}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			reader := bufio.NewReader(bytes.NewReader(data))
+			parser.ReadLength(reader)
+		}
+	})
+
+	b.Run("ReadLength/32bit", func(b *testing.B) {
+		data := []byte{0x80, 0x00, 0x00, 0x01, 0x02}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			reader := bufio.NewReader(bytes.NewReader(data))
+			parser.ReadLength(reader)
+		}
+	})
+
+	b.Run("ReadString/small", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			reader := bufio.NewReader(bytes.NewReader(smallStr))
+			parser.ReadString(reader)
+		}
+	})
+
+	b.Run("ReadString/large", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			reader := bufio.NewReader(bytes.NewReader(largeStrWithLen))
+			parser.ReadString(reader)
+		}
+	})
+}
+
 func TestReadString(t *testing.T) {
 	tests := []struct {
 		name    string

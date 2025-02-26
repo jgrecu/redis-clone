@@ -29,6 +29,187 @@ func TestNewRDB(t *testing.T) {
 	}
 }
 
+func TestRDB_ConcurrentOperations(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "rdb-concurrent-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := config.NewConfig()
+	cfg.Dir = tempDir
+	cfg.DbFilename = "concurrent.rdb"
+	cfg.SaveInterval = time.Millisecond * 100
+
+	store := storage.NewStore(time.Hour)
+	rdb := NewRDB(cfg, store)
+
+	// Start multiple goroutines performing operations
+	var wg sync.WaitGroup
+	numWorkers := 5
+	wg.Add(numWorkers * 2) // Writers and readers
+
+	// Channel to collect errors from goroutines
+	errChan := make(chan error, numWorkers*2*10) // Buffer for all possible errors
+
+	// Writers
+	for i := 0; i < numWorkers; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				key := fmt.Sprintf("key%d-%d", id, j)
+				store.Set(key, fmt.Sprintf("value%d-%d", id, j), time.Hour)
+				if err := rdb.Save(); err != nil {
+					errChan <- fmt.Errorf("Save error in writer %d: %v", id, err)
+					return
+				}
+				time.Sleep(time.Millisecond * 10)
+			}
+		}(i)
+	}
+
+	// Readers
+	for i := 0; i < numWorkers; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				if err := rdb.Load(); err != nil {
+					errChan <- fmt.Errorf("Load error in reader %d: %v", id, err)
+					return
+				}
+				time.Sleep(time.Millisecond * 10)
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		t.Error(err)
+	}
+}
+
+func TestRDB_LargeDataset(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "rdb-large-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := config.NewConfig()
+	cfg.Dir = tempDir
+	cfg.DbFilename = "large.rdb"
+
+	store := storage.NewStore(time.Hour)
+	rdb := NewRDB(cfg, store)
+
+	// Create and store test data
+	numEntries := 10000
+	for i := 0; i < numEntries; i++ {
+		key := fmt.Sprintf("key%d", i)
+		value := fmt.Sprintf("value%d", i)
+		store.Set(key, value, time.Hour)
+	}
+
+	// Save and load data
+	if err := rdb.Save(); err != nil {
+		t.Fatalf("Failed to save: %v", err)
+	}
+
+	newStore := storage.NewStore(time.Hour)
+	newRDB := NewRDB(cfg, newStore)
+
+	if err := newRDB.Load(); err != nil {
+		t.Fatalf("Failed to load: %v", err)
+	}
+
+	// Verify data
+	for i := 0; i < numEntries; i++ {
+		key := fmt.Sprintf("key%d", i)
+		expectedValue := fmt.Sprintf("value%d", i)
+		if value, exists := newStore.Get(key); !exists || value != expectedValue {
+			t.Errorf("Data mismatch for key %s", key)
+		}
+	}
+}
+
+func TestRDB_ErrorConditions(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "rdb-error-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tests := []struct {
+		name      string
+		setup     func(*config.Config, *storage.Store) *RDB
+		operation string // "save" or "load"
+		wantErr   bool
+	}{
+		{
+			name: "invalid directory",
+			setup: func(cfg *config.Config, store *storage.Store) *RDB {
+				cfg.Dir = "/nonexistent/directory"
+				return NewRDB(cfg, store)
+			},
+			operation: "save",
+			wantErr:   true,
+		},
+		{
+			name: "corrupted file",
+			setup: func(cfg *config.Config, store *storage.Store) *RDB {
+				rdb := NewRDB(cfg, store)
+				// Create corrupted RDB file with invalid header version
+				corruptedData := append([]byte("REDIS9999"), []byte("corrupted data")...)
+				err := os.WriteFile(filepath.Join(cfg.Dir, cfg.DbFilename), corruptedData, 0644)
+				if err != nil {
+					t.Fatalf("Failed to create corrupted file: %v", err)
+				}
+				return rdb
+			},
+			operation: "load",
+			wantErr:   true,
+		},
+		{
+			name: "permission denied",
+			setup: func(cfg *config.Config, store *storage.Store) *RDB {
+				// Create read-only directory
+				readOnlyDir := filepath.Join(tempDir, "readonly")
+				if err := os.Mkdir(readOnlyDir, 0500); err != nil {
+					t.Fatalf("Failed to create read-only dir: %v", err)
+				}
+				cfg.Dir = readOnlyDir
+				return NewRDB(cfg, store)
+			},
+			operation: "save",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.NewConfig()
+			cfg.Dir = tempDir
+			cfg.DbFilename = "error.rdb"
+			store := storage.NewStore(time.Hour)
+
+			rdb := tt.setup(cfg, store)
+			var err error
+			if tt.operation == "save" {
+				err = rdb.Save()
+			} else {
+				err = rdb.Load()
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("%s() error = %v, wantErr %v", tt.operation, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestRDB_SaveAndLoad(t *testing.T) {
 	// Create a temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "rdb-test")
@@ -94,60 +275,6 @@ func TestRDB_SaveAndLoad(t *testing.T) {
 		}
 	}
 }
-
-// func TestRDB_BackgroundSave(t *testing.T) {
-// 	// Create a temporary directory for test files
-// 	tempDir, err := os.MkdirTemp("", "rdb-test")
-// 	if err != nil {
-// 		t.Fatalf("Failed to create temp dir: %v", err)
-// 	}
-// 	defer os.RemoveAll(tempDir)
-
-// 	// Create config with very short save interval
-// 	cfg := config.NewConfig()
-// 	cfg.Dir = tempDir
-// 	cfg.DbFilename = "test.rdb"
-// 	cfg.SaveInterval = 100 * time.Millisecond
-
-// 	// Create store with test data
-// 	store := storage.NewStore(time.Hour)
-// 	store.Set("key1", "value1", 0)
-
-// 	// Create RDB instance (this starts background save)
-// 	_ = NewRDB(cfg, store) // Background save starts automatically
-
-// 	// Wait for at least one background save
-// 	time.Sleep(150 * time.Millisecond)
-
-// 	// Verify file exists
-// 	rdbPath := filepath.Join(tempDir, "test.rdb")
-// 	if _, err := os.Stat(rdbPath); os.IsNotExist(err) {
-// 		t.Error("Background save did not create RDB file")
-// 	}
-
-// 	// Add more data and wait for another save
-// 	store.Set("key2", "value2", 0)
-// 	time.Sleep(150 * time.Millisecond)
-
-// 	// Load data into new store to verify background save worked
-// 	newStore := storage.NewStore(time.Hour)
-// 	newRDB := NewRDB(cfg, newStore)
-// 	err = newRDB.Load()
-// 	if err != nil {
-// 		t.Fatalf("Load() error = %v", err)
-// 	}
-
-// 	// Verify both keys were saved
-// 	expectedData := map[string]string{
-// 		"key1": "value1",
-// 		"key2": "value2",
-// 	}
-// 	for key, expectedValue := range expectedData {
-// 		if val, exists := newStore.Get(key); !exists || val != expectedValue {
-// 			t.Errorf("Background save did not persist key %s correctly, got %s, want %s", key, val, expectedValue)
-// 		}
-// 	}
-// }
 
 func TestRDB_ConcurrentAccess(t *testing.T) {
 	// Create a temporary directory for test files
