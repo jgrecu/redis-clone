@@ -296,7 +296,7 @@ func (i *InfoCommand) Execute(args []string) ([]byte, error) {
 	info.WriteString(fmt.Sprintf("role:%s\r\n", i.config.Role))
 
 	if i.config.Role == "master" {
-		connectedSlaves := len(i.server.replicas)
+		connectedSlaves := i.server.replication.GetReplicaCount()
 		info.WriteString(fmt.Sprintf("connected_slaves:%d\r\n", connectedSlaves))
 		info.WriteString("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n")
 		info.WriteString("master_repl_offset:0\r\n")

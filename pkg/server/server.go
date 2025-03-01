@@ -20,8 +20,7 @@ type Server struct {
 	parser      *resp.Parser
 	writer      *resp.Writer
 	commands    map[string]Command
-	masterConn  net.Conn
-	replicas    map[net.Conn]bool
+	replication ReplicationManager
 	currentConn net.Conn
 }
 
@@ -37,8 +36,10 @@ func NewServer(cfg *config.Config) *Server {
 		parser:   parser,
 		writer:   writer,
 		commands: make(map[string]Command),
-		replicas: make(map[net.Conn]bool),
 	}
+
+	// Initialize ReplicationManager
+	s.replication = NewReplicationManager(writer)
 
 	// Initialize RDB
 	s.rdb = rdb.NewRDB(cfg, store)
@@ -70,80 +71,63 @@ func (s *Server) connectToMaster() error {
 		return fmt.Errorf("failed to connect to master: %w", err)
 	}
 
-	// Store the connection for future use
-	s.masterConn = conn
+	// Set the master connection in ReplicationManager
+	s.replication.SetMaster(conn)
+
+	// Helper function to cleanup on error
+	cleanup := func(err error) error {
+		conn.Close()
+		s.replication.SetMaster(nil)
+		return err
+	}
 
 	// Send PING command
 	pingCmd := []string{"PING"}
 	pingMsg := s.writer.WriteArray(pingCmd)
-	_, err = conn.Write(pingMsg)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to send PING to master: %w", err)
+	if _, err = conn.Write(pingMsg); err != nil {
+		return cleanup(fmt.Errorf("failed to send PING to master: %w", err))
 	}
 
 	// Read PING response
 	respBuf := make([]byte, 512)
-	_, err = conn.Read(respBuf)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to read PING response from master: %w", err)
+	if _, err = conn.Read(respBuf); err != nil {
+		return cleanup(fmt.Errorf("failed to read PING response from master: %w", err))
 	}
 
 	// Send first REPLCONF command (listening-port)
 	replconfPortCmd := []string{"REPLCONF", "listening-port", fmt.Sprintf("%d", s.config.Port)}
 	replconfPortMsg := s.writer.WriteArray(replconfPortCmd)
-	_, err = conn.Write(replconfPortMsg)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to send REPLCONF listening-port to master: %w", err)
+	if _, err = conn.Write(replconfPortMsg); err != nil {
+		return cleanup(fmt.Errorf("failed to send REPLCONF listening-port to master: %w", err))
 	}
 
 	// Read first REPLCONF response
-	_, err = conn.Read(respBuf)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to read REPLCONF listening-port response from master: %w", err)
+	if _, err = conn.Read(respBuf); err != nil {
+		return cleanup(fmt.Errorf("failed to read REPLCONF listening-port response from master: %w", err))
 	}
 
 	// Send second REPLCONF command (capabilities)
 	replconfCapaCmd := []string{"REPLCONF", "capa", "psync2"}
 	replconfCapaMsg := s.writer.WriteArray(replconfCapaCmd)
-	_, err = conn.Write(replconfCapaMsg)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to send REPLCONF capa to master: %w", err)
+	if _, err = conn.Write(replconfCapaMsg); err != nil {
+		return cleanup(fmt.Errorf("failed to send REPLCONF capa to master: %w", err))
 	}
 
 	// Read second REPLCONF response
-	_, err = conn.Read(respBuf)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to read REPLCONF capa response from master: %w", err)
+	if _, err = conn.Read(respBuf); err != nil {
+		return cleanup(fmt.Errorf("failed to read REPLCONF capa response from master: %w", err))
 	}
 
 	// Send PSYNC command
 	psyncCmd := []string{"PSYNC", "?", "-1"}
 	psyncMsg := s.writer.WriteArray(psyncCmd)
-	_, err = conn.Write(psyncMsg)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to send PSYNC to master: %w", err)
+	if _, err = conn.Write(psyncMsg); err != nil {
+		return cleanup(fmt.Errorf("failed to send PSYNC to master: %w", err))
 	}
 
 	// Read PSYNC response (ignored for now as per requirements)
-	_, err = conn.Read(respBuf)
-	if err != nil {
-		conn.Close()
-		s.masterConn = nil
-		return fmt.Errorf("failed to read PSYNC response from master: %w", err)
+	if _, err = conn.Read(respBuf); err != nil {
+		return cleanup(fmt.Errorf("failed to read PSYNC response from master: %w", err))
 	}
 
 	log.Printf("Connected to master at %s and completed handshake", masterAddr)
@@ -231,40 +215,35 @@ func (s *Server) isWriteCommand(cmdName string) bool {
 
 // propagateToReplicas sends a command to all connected replicas
 func (s *Server) propagateToReplicas(msg *resp.Message) error {
-	if len(s.replicas) == 0 {
-		return nil
-	}
-
-	// Convert message to RESP array format
-	cmdArray := s.writer.WriteArray(msg.Content)
-
-	var lastErr error
-	for replica := range s.replicas {
-		_, err := replica.Write(cmdArray)
-		if err != nil {
-			// If we fail to write to a replica, remove it from our list
-			delete(s.replicas, replica)
-			lastErr = err
-		}
-	}
-	return lastErr
+	return s.replication.PropagateCommand(msg.Content)
 }
 
 // AddReplica adds a new replica connection
-func (s *Server) AddReplica(conn net.Conn) {
-	s.replicas[conn] = true
-	log.Printf("New replica connected from %s", conn.RemoteAddr())
+func (s *Server) AddReplica(conn net.Conn) error {
+	err := s.replication.AddReplica(conn)
+	if err == nil {
+ 	addr := "unknown"
+ 	if conn != nil && conn.RemoteAddr() != nil {
+ 		addr = conn.RemoteAddr().String()
+ 	}
+ 	log.Printf("New replica connected from %s", addr)
+	}
+	return err
 }
 
 // RemoveReplica removes a replica connection
 func (s *Server) RemoveReplica(conn net.Conn) {
-	delete(s.replicas, conn)
-	log.Printf("Replica disconnected from %s", conn.RemoteAddr())
+	s.replication.RemoveReplica(conn)
+	addr := "unknown"
+	if conn != nil && conn.RemoteAddr() != nil {
+		addr = conn.RemoteAddr().String()
+	}
+	log.Printf("Replica disconnected from %s", addr)
 }
 
 // IsReplica checks if the given connection is a replica
 func (s *Server) IsReplica(conn net.Conn) bool {
-	return s.replicas[conn]
+	return s.replication.HasReplica(conn)
 }
 
 func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
@@ -286,10 +265,10 @@ func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 
 	// If this is a write command and we're a master, propagate it to all replicas
 	if s.isWriteCommand(cmdName) && s.config.Role == "master" {
-		log.Printf("[DEBUG_LOG] Propagating command %v to %d replicas", cmdName, len(s.replicas))
+		log.Printf("[DEBUG_LOG] Propagating command %v to %d replicas", cmdName, s.replication.GetReplicaCount())
 		if err := s.propagateToReplicas(msg); err != nil {
 			log.Printf("Error propagating command to replicas: %v", err)
-			// Don't return error to client as the command was executed successfully
+			return response, err // Return the error to properly handle replication failures
 		}
 	}
 
