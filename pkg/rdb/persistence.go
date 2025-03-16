@@ -79,6 +79,5 @@ func (r *RDB) Load() error {
 		r.store.Restore(data)
 	}
 
-	// return fmt.Errorf("failed to decode RDB data: %w", err)
 	return nil
 }
