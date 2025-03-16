@@ -1,6 +1,7 @@
 package resp
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -81,7 +82,7 @@ func TestParser_Parse(t *testing.T) {
 func TestWriter_WriteSimpleString(t *testing.T) {
 	w := NewWriter()
 	got := w.WriteSimpleString("OK")
-	want := []byte("+OK\r\n")
+	want := []byte(fmt.Sprintf("%cOK\r\n", SimplePrefix))
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("WriteSimpleString() = %v, want %v", got, want)
 	}
@@ -90,7 +91,7 @@ func TestWriter_WriteSimpleString(t *testing.T) {
 func TestWriter_WriteBulkString(t *testing.T) {
 	w := NewWriter()
 	got := w.WriteBulkString("hello")
-	want := []byte("$5\r\nhello\r\n")
+	want := []byte(fmt.Sprintf("%c5\r\nhello\r\n", BulkPrefix))
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("WriteBulkString() = %v, want %v", got, want)
 	}
@@ -99,7 +100,7 @@ func TestWriter_WriteBulkString(t *testing.T) {
 func TestWriter_WriteError(t *testing.T) {
 	w := NewWriter()
 	got := w.WriteError("Error message")
-	want := []byte("-Error message\r\n")
+	want := []byte(fmt.Sprintf("%cError message\r\n", ErrorPrefix))
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("WriteError() = %v, want %v", got, want)
 	}
@@ -108,7 +109,7 @@ func TestWriter_WriteError(t *testing.T) {
 func TestWriter_WriteNullBulk(t *testing.T) {
 	w := NewWriter()
 	got := w.WriteNullBulk()
-	want := []byte("$-1\r\n")
+	want := []byte(fmt.Sprintf("%c-1\r\n", BulkPrefix))
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("WriteNullBulk() = %v, want %v", got, want)
 	}
@@ -123,17 +124,17 @@ func TestWriter_WriteArray(t *testing.T) {
 		{
 			name:  "empty array",
 			input: []string{},
-			want:  []byte("*0\r\n"),
+			want:  []byte(fmt.Sprintf("%c0\r\n", ArrayPrefix)),
 		},
 		{
 			name:  "single element",
 			input: []string{"hello"},
-			want:  []byte("*1\r\n$5\r\nhello\r\n"),
+			want:  []byte(fmt.Sprintf("%c1\r\n%c5\r\nhello\r\n", ArrayPrefix, BulkPrefix)),
 		},
 		{
 			name:  "multiple elements",
 			input: []string{"hello", "world"},
-			want:  []byte("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n"),
+			want:  []byte(fmt.Sprintf("%c2\r\n%c5\r\nhello\r\n%c5\r\nworld\r\n", ArrayPrefix, BulkPrefix, BulkPrefix)),
 		},
 	}
 

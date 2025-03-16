@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	ArrayPrefix = '*'
-	BulkPrefix  = '$'
-	//SimplePrefix = '+'
-	//ErrorPrefix  = '-'
+	ArrayPrefix  = '*'
+	BulkPrefix   = '$'
+	SimplePrefix = '+'
+	ErrorPrefix  = '-'
 )
 
 // Message represents a RESP protocol message
@@ -55,7 +55,7 @@ func (p *Parser) parseArray(input []byte) (*Message, error) {
 	// Parse length
 	lengthEnd := bytes.Index(input[1:], []byte("\r\n"))
 	if lengthEnd == -1 {
-		return nil, fmt.Errorf("invalid arrag format")
+		return nil, fmt.Errorf("invalid array format")
 	}
 
 	length, err := strconv.Atoi(string(input[1 : lengthEnd+1]))
@@ -135,32 +135,32 @@ func NewWriter() *Writer {
 
 // WriteSimpleString writes a simple string response
 func (w *Writer) WriteSimpleString(s string) []byte {
-	return []byte(fmt.Sprintf("+%s\r\n", s))
+	return []byte(fmt.Sprintf("%c%s\r\n", SimplePrefix, s))
 }
 
 // WriteBulkString writes a bulk string response
 func (w *Writer) WriteBulkString(s string) []byte {
-	return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
+	return []byte(fmt.Sprintf("%c%d\r\n%s\r\n", BulkPrefix, len(s), s))
 }
 
 // WriteError writes an error response
 func (w *Writer) WriteError(s string) []byte {
-	return []byte(fmt.Sprintf("-%s\r\n", s))
+	return []byte(fmt.Sprintf("%c%s\r\n", ErrorPrefix, s))
 }
 
 // WriteNullBulk writes a null bulk string response
 func (w *Writer) WriteNullBulk() []byte {
-	return []byte("$-1\r\n")
+	return []byte(fmt.Sprintf("%c-1\r\n", BulkPrefix))
 }
 
 // WriteArray writes an array response
 func (w *Writer) WriteArray(s []string) []byte {
 	// Start with array length indicator
-	resp := []byte(fmt.Sprintf("*%d\r\n", len(s)))
+	resp := []byte(fmt.Sprintf("%c%d\r\n", ArrayPrefix, len(s)))
 
 	// Append each string in the array
 	for _, str := range s {
-		resp = append(resp, []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(str), str))...)
+		resp = append(resp, []byte(fmt.Sprintf("%c%d\r\n%s\r\n", BulkPrefix, len(str), str))...)
 	}
 	return resp
 }
