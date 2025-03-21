@@ -162,6 +162,9 @@ func (s *Server) Start() error {
 		if err := s.connectToMaster(); err != nil {
 			return err
 		}
+
+		// Start a goroutine to handle commands from the master
+		go s.handleConnection(s.masterConn)
 	}
 
 	address := fmt.Sprintf("%s:%d", s.config.Address, s.config.Port)
@@ -210,6 +213,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 			continue
 		}
 
+		// If this connection is from the master and we're a replica,
+		// we need to execute the command to update our local state
+		if s.config.Role == "slave" && conn == s.masterConn {
+			// Execute the command to update our local state
+			_, err := s.handleMessage(msg)
+			if err != nil {
+				log.Printf("Error handling command from master: %v", err)
+			}
+			// Don't send a response back to the master
+			continue
+		}
+
+		// For all other connections (clients to master or clients to replica)
 		response, err := s.handleMessage(msg)
 		if err != nil {
 			conn.Write(s.writer.WriteError(err.Error()))
@@ -284,7 +300,7 @@ func (s *Server) handleMessage(msg *resp.Message) ([]byte, error) {
 		return nil, err
 	}
 
-	// If this is a write command and we're a master, propagate it to all replicas
+	// If this is a write command, and we're a master, propagate it to all replicas
 	if s.isWriteCommand(cmdName) && s.config.Role == "master" {
 		log.Printf("[DEBUG_LOG] Propagating command %v to %d replicas", cmdName, len(s.replicas))
 		if err := s.propagateToReplicas(msg); err != nil {
