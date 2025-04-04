@@ -29,8 +29,7 @@ func Get(params []*resp.RESP) *resp.RESP {
 
 	if !ok {
 		return &resp.RESP{
-			Type: "bulk",
-			Bulk: "-1",
+			Type: "nil",
 		}
 	}
 
@@ -40,8 +39,7 @@ func Get(params []*resp.RESP) *resp.RESP {
 		mut.Unlock()
 
 		return &resp.RESP{
-			Type: "bulk",
-			Bulk: "-1",
+			Type: "nil",
 		}
 	}
 
