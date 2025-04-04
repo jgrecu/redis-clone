@@ -1,14 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"github.com/jgrecu/redis-clone/app/resp"
 	"net"
 	"os"
+	"strings"
 )
-
-// Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
-var _ = net.Listen
-var _ = os.Exit
 
 func main() {
 
@@ -30,16 +29,26 @@ func main() {
 }
 
 func handleConnection(conn net.Conn) {
+	reader := resp.NewRespReader(bufio.NewReader(conn))
 	for {
-		buf := make([]byte, 1024)
-
-		_, err := conn.Read(buf)
-
+		resp, err := reader.Read()
 		if err != nil {
 			fmt.Println("Error reading from connection: ", err.Error())
 			break
 		}
 
-		conn.Write([]byte("+PONG\r\n"))
+		if resp.Type != "array" {
+			fmt.Println("expected to receive an array")
+			break
+		}
+
+		command := resp.Array[0].Bulk
+
+		if strings.ToUpper(command) == "ECHO" {
+			respBuf, _ := resp.Array[1].Marshal()
+			conn.Write(respBuf)
+		} else {
+			conn.Write([]byte("+PONG\r\n"))
+		}
 	}
 }
