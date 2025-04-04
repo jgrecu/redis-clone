@@ -31,30 +31,25 @@ func main() {
 func handleConnection(conn net.Conn) {
 	reader := resp.NewRespReader(bufio.NewReader(conn))
 	for {
-		resp, err := reader.Read()
+		readMsg, err := reader.Read()
 		if err != nil {
 			fmt.Println("Error reading from connection: ", err.Error())
 			break
 		}
 
-		if resp.Type != "array" {
+		if readMsg.Type != "array" {
 			fmt.Println("expected to receive an array")
 			break
 		}
 
-		command := strings.ToUpper(resp.Array[0].Bulk)
+		command := strings.ToUpper(readMsg.Array[0].Bulk)
 
-		if command == "ECHO" {
-			respBuf, _ := resp.Array[1].Marshal()
-			conn.Write(respBuf)
-		} else {
-			handler, ok := handlers[command]
-			if !ok {
-				fmt.Println("Unknown command: ", command)
-				break
-			}
-			res, _ := handler(resp.Array[1:]).Marshal()
-			conn.Write(res)
+		handler, ok := handlers[command]
+		if !ok {
+			fmt.Println("Unknown command: ", command)
+			break
 		}
+		res, _ := handler(readMsg.Array[1:]).Marshal()
+		conn.Write(res)
 	}
 }
