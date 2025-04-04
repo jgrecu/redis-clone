@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -33,11 +34,12 @@ func handleConnection(conn net.Conn) {
 	for {
 		readMsg, err := reader.Read()
 		if err != nil {
-			fmt.Println("Error reading from connection: ", err.Error())
+			log.Println("Error reading from connection: ", err.Error())
+			conn.Write([]byte("Error reading from connection: " + err.Error()))
 			break
 		}
 
-		if readMsg.Type != "array" && len(readMsg.Array) < 1 {
+		if readMsg.Type != "array" || len(readMsg.Array) < 1 {
 			fmt.Println("Invalid command")
 			break
 		}
@@ -47,6 +49,7 @@ func handleConnection(conn net.Conn) {
 		handler, ok := handlers[command]
 		if !ok {
 			fmt.Println("Unknown command: ", command)
+			conn.Write([]byte("Unknown command: " + command))
 			break
 		}
 		res, _ := handler(readMsg.Array[1:]).Marshal()
