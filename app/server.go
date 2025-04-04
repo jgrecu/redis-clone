@@ -39,7 +39,6 @@ func handleConnection(conn net.Conn) {
 		readMsg, err := reader.Read()
 		if err != nil {
 			log.Println("Error reading from connection: ", err.Error())
-			conn.Write([]byte("Error reading from connection: " + err.Error()))
 			break
 		}
 
@@ -50,13 +49,16 @@ func handleConnection(conn net.Conn) {
 
 		command := strings.ToUpper(readMsg.Array[0].Bulk)
 
-		handler, ok := handlers[command]
+		handler, ok := GetHandler(command)
 		if !ok {
 			fmt.Println("Unknown command: ", command)
-			conn.Write([]byte("Unknown command: " + command))
 			break
 		}
-		res, _ := handler(readMsg.Array[1:]).Marshal()
+		res, err := handler(readMsg.Array[1:]).Marshal()
+		if err != nil {
+			fmt.Println("Error marshaling response for command:", command, "-", err.Error())
+			continue
+		}
 		conn.Write(res)
 	}
 }
