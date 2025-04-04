@@ -78,7 +78,7 @@ func (r *RespReader) readBulk() (*RESP, error) {
 func (r *RespReader) readLine() ([]byte, error) {
 	line, err := r.reader.ReadBytes(byte('\n'))
 	if err != nil {
-		return line, fmt.Errorf("err reading line")
+		return line, fmt.Errorf("error reading line")
 	}
 
 	return line[:len(line)-2], nil
@@ -115,7 +115,10 @@ func (r *RESP) Marshal() ([]byte, error) {
 		}
 
 		return buf, nil
+	case "error":
+		msg := fmt.Sprintf("-%s\r\n", r.Bulk)
+		return []byte(msg), nil
 	}
 
-	return nil, fmt.Errorf("unsopported type")
+	return nil, fmt.Errorf("unsupported type")
 }
