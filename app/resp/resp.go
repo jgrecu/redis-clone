@@ -81,9 +81,9 @@ func Bulk(b string) RESP {
 func (r *RespReader) Read() (RESP, error) {
 	typ, err := r.reader.ReadByte()
 	if err != nil {
-		if err.Error() == "EOF" {
-			return Nil(), nil
-		}
+		//if err.Error() == "EOF" {
+		//	return Nil(), nil
+		//}
 		return RESP{}, err
 	}
 
