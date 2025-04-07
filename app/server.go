@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
+	"github.com/jgrecu/redis-clone/app/handlers"
 	"github.com/jgrecu/redis-clone/app/rdb"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
@@ -75,7 +76,7 @@ func handleConnection(conn net.Conn) {
 
 		command := strings.ToUpper(readMsg.Array[0].Bulk)
 
-		handler, ok := Handlers[command]
+		handler, ok := handlers.GetHandler(command)
 		if !ok {
 			fmt.Println("Unknown command: ", command)
 			break
