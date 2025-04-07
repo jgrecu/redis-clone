@@ -20,13 +20,14 @@ func handShake() error {
 
 	send(conn, "PING")
 	value, _ := reader.Read()
-	fmt.Printf("Received response from master: %v\n", value.Bulk)
 
 	send(conn, "REPLCONF", "listening-port", config.Get("port"))
 	value, _ = reader.Read()
-	fmt.Printf("Received response from master: %v\n", value.Bulk)
 
 	send(conn, "REPLCONF", "capa", "psync2")
+	value, _ = reader.Read()
+
+	send(conn, "PSYNC", "?", "-1")
 	value, _ = reader.Read()
 	fmt.Printf("Received response from master: %v\n", value.Bulk)
 
@@ -34,9 +35,6 @@ func handShake() error {
 }
 
 func send(conn net.Conn, commands ...string) error {
-	fmt.Printf("Sending command to master: %v\n", commands)
-
-	// send commands
 	commandsArray := make([]resp.RESP, len(commands))
 	for i, command := range commands {
 		commandsArray[i] = resp.Bulk(command)
