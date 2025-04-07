@@ -77,6 +77,14 @@ func (r *RespReader) Read() (RESP, error) {
 		return r.readArray()
 	case BulkByte:
 		return r.readBulk()
+	case StringByte:
+		return r.readString()
+	case IntegerByte:
+		i, err := r.readInt()
+		if err != nil {
+			return RESP{}, err
+		}
+		return Integer(i), nil
 	}
 	return RESP{}, fmt.Errorf("unsupported type")
 }
@@ -115,6 +123,15 @@ func (r *RespReader) readBulk() (RESP, error) {
 		Type: "bulk",
 		Bulk: string(buf),
 	}, nil
+}
+
+func (r *RespReader) readString() (RESP, error) {
+	buf, err := r.readLine()
+	if err != nil {
+		return RESP{}, err
+	}
+
+	return String(string(buf)), nil
 }
 
 func (r *RespReader) readLine() ([]byte, error) {
