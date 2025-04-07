@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/rdb"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
@@ -21,10 +22,19 @@ func main() {
 	replicaof := flag.String("replicaof", "", "Address of master of server")
 	flag.Parse()
 
-	SetConfig("dir", *dir)
-	SetConfig("dbFileName", *dbFileName)
-	SetConfig("port", *port)
-	SetConfig("replicaof", *replicaof)
+	config.Set("dir", *dir)
+	config.Set("dbFileName", *dbFileName)
+	config.Set("port", *port)
+	config.Set("replicaof", *replicaof)
+
+	if *replicaof != "" {
+		config.Set("role", "slave")
+	} else {
+		config.Set("role", "master")
+	}
+
+	config.Set("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb")
+	config.Set("master_repl_offset", "0")
 
 	initializeMapStore(*dir, *dbFileName)
 
