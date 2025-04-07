@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
@@ -8,22 +9,32 @@ import (
 )
 
 func handShake() error {
-
-	send("PING")
-	send("REPLCONF", "listening-port", config.Get("port"))
-	send("REPLCONF", "capa", "psync2")
-
-	return nil
-}
-
-func send(commands ...string) error {
-	fmt.Printf("Sending command to master: %v\n", commands)
 	link := config.Get("master_host") + ":" + config.Get("master_port")
 	conn, err := net.Dial("tcp", link)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	// defer conn.Close()
+
+	reader := resp.NewRespReader(bufio.NewReader(conn))
+
+	send(conn, "PING")
+	value, _ := reader.Read()
+	fmt.Printf("Received response from master: %v\n", value.Bulk)
+
+	send(conn, "REPLCONF", "listening-port", config.Get("port"))
+	value, _ = reader.Read()
+	fmt.Printf("Received response from master: %v\n", value.Bulk)
+
+	send(conn, "REPLCONF", "capa", "psync2")
+	value, _ = reader.Read()
+	fmt.Printf("Received response from master: %v\n", value.Bulk)
+
+	return nil
+}
+
+func send(conn net.Conn, commands ...string) error {
+	fmt.Printf("Sending command to master: %v\n", commands)
 
 	// send commands
 	commandsArray := make([]resp.RESP, len(commands))
