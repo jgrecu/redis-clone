@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
@@ -20,9 +19,12 @@ var handlers = map[string]CommandHandler{
 	"INFO":   info,
 }
 
-func GetHandler(command string) (CommandHandler, bool) {
+func GetHandler(command string) CommandHandler {
 	handler, ok := handlers[strings.ToUpper(command)]
-	return handler, ok
+	if !ok {
+		return notFound
+	}
+	return handler
 }
 
 func ping(params []resp.RESP) resp.RESP {
@@ -37,4 +39,8 @@ func echo(params []resp.RESP) resp.RESP {
 		Type: "bulk",
 		Bulk: params[0].Bulk,
 	}
+}
+
+func notFound(params []resp.RESP) resp.RESP {
+	return resp.Error("Command not found")
 }

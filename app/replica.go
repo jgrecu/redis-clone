@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"net"
 )
 
-func handShake(link string) error {
+func handShake() error {
 
 	send("PING")
 	send("REPLCONF", "listening-port", config.Get("port"))
@@ -16,6 +17,7 @@ func handShake(link string) error {
 }
 
 func send(commands ...string) error {
+	fmt.Printf("Sending command to master: %v\n", commands)
 	link := config.Get("master_host") + ":" + config.Get("master_port")
 	conn, err := net.Dial("tcp", link)
 	if err != nil {
@@ -26,16 +28,10 @@ func send(commands ...string) error {
 	// send commands
 	commandsArray := make([]resp.RESP, len(commands))
 	for i, command := range commands {
-		commandsArray[i] = resp.RESP{
-			Type: "bulk",
-			Bulk: command,
-		}
+		commandsArray[i] = resp.Bulk(command)
 	}
 
-	message, err := resp.RESP{
-		Type:  "array",
-		Array: commandsArray,
-	}.Marshal()
+	message, err := resp.Array(commandsArray).Marshal()
 
 	if err != nil {
 		return err
