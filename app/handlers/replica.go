@@ -45,13 +45,17 @@ func getRDBFile() []byte {
 func wait(params []resp.RESP) []byte {
 	if len(params) > 1 {
 		count, _ := strconv.Atoi(params[0].Bulk)
+		if count <= 0 {
+			return resp.Integer(0).Marshal()
+		}
 		timeout, _ := strconv.Atoi(params[1].Bulk)
 		cha := make(chan bool)
 
 		for index, replica := range config.Get().Replicas {
 			go func(idx int, replica *config.Node) {
-				for {
-					replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
+				if replica.Offset > 0 {
+					size, _ := replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
+					config.SetReplOffset(idx, size)
 					_, err := replica.Read()
 					if err == nil {
 						cha <- true
