@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"log"
 	"strconv"
 	"time"
 )
@@ -50,31 +51,38 @@ func wait(params []resp.RESP) []byte {
 		}
 		timeout, _ := strconv.Atoi(params[1].Bulk)
 		cha := make(chan bool)
-
-		for index, replica := range config.Get().Replicas {
-			go func(idx int, replica *config.Node) {
-				if replica.Offset > 0 {
-					size, _ := replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
-					config.SetReplOffset(idx, size)
-					_, err := replica.Read()
-					if err == nil {
-						cha <- true
-					}
-				}
-			}(index, &replica)
-		}
-
-		if count > len(config.Get().Replicas) {
-			count = len(config.Get().Replicas)
-		}
-
 		ack := 0
+
+		for i := 0; i < len(config.Get().Replicas); i++ {
+			replica := config.Get().Replicas[i]
+
+			if replica.Offset > 0 {
+				go func(idx int, replica config.Node) {
+					size, _ := replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
+					_, err := replica.Read()
+					if err != nil {
+						log.Println("Error reading REPLCONF: ", err.Error())
+					}
+					config.SetReplOffset(idx, size)
+					cha <- true
+				}(i, replica)
+			} else {
+				ack++
+			}
+
+		}
+
+		//if count > len(config.Get().Replicas) {
+		//	count = len(config.Get().Replicas)
+		//}
+
 	loop:
-		for i := 0; i < count; i++ {
+		for ack < count {
 			// case timeout
 			select {
 			case <-cha:
 				ack++
+				log.Println("ack: ", ack)
 				continue
 			case <-time.After(time.Duration(timeout) * time.Microsecond):
 				break loop
