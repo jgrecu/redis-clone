@@ -40,8 +40,8 @@ func (m *Master) HandShake() error {
 	value, _ = m.reader.Read()
 
 	m.send("PSYNC", "?", "-1")
-	value, _ = m.reader.Read()
-
+	value, _ = m.reader.Read()    // +FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0
+	value, _ = m.reader.ReadRDB() // +RDBFIILE
 	fmt.Printf("Received response from master: %v\n", value.Bulk)
 
 	return nil
