@@ -14,7 +14,7 @@ func handShake() error {
 	if err != nil {
 		return err
 	}
-	// defer conn.Close()
+	defer conn.Close()
 
 	reader := resp.NewRespReader(bufio.NewReader(conn))
 
