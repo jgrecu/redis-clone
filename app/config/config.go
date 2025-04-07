@@ -20,7 +20,7 @@ type Config struct {
 	MasterReplOffset string
 	Offset           int
 	Replicas         []*Node
-	Master           Node
+	Master           *Node
 }
 
 var (
@@ -59,7 +59,7 @@ func Get() *Config {
 			if err != nil {
 				log.Println("Error connecting to master: ", err.Error())
 			} else {
-				configs.Master = *NewNode(masterConn)
+				configs.Master = NewNode(masterConn)
 			}
 		} else {
 			configs.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
