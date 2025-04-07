@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"log"
@@ -11,6 +12,13 @@ import (
 )
 
 func main() {
+	// read configs flag
+	dir := flag.String("dir", "", "Directory to serve files from")
+	dbFileName := flag.String("dbFileName", "dump.rdb", "Filename to save the Database to")
+	flag.Parse()
+
+	SetConfig("dir", *dir)
+	SetConfig("dbFileName", *dbFileName)
 
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -49,7 +57,7 @@ func handleConnection(conn net.Conn) {
 
 		command := strings.ToUpper(readMsg.Array[0].Bulk)
 
-		handler, ok := GetHandler(command)
+		handler, ok := Handlers[command]
 		if !ok {
 			fmt.Println("Unknown command: ", command)
 			break
