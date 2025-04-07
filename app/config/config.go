@@ -95,6 +95,28 @@ func AddReplica(conn net.Conn) {
 	mu.Unlock()
 }
 
+func Replica(conn net.Conn) *Node {
+	mu.Lock()
+	defer mu.Unlock()
+	for _, replica := range configs.Replicas {
+		if replica.id == conn.RemoteAddr().String() {
+			return replica
+		}
+	}
+	return nil
+}
+
+func RemoveReplica(replica *Node) {
+	mu.Lock()
+	defer mu.Unlock()
+	for i, repl := range configs.Replicas {
+		if replica.id == repl.id {
+			configs.Replicas = append(configs.Replicas[:i], configs.Replicas[i+1:]...)
+			return
+		}
+	}
+}
+
 func IncreaseOffset(num int) {
 	mu.Lock()
 	configs.Offset += num

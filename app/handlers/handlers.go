@@ -5,7 +5,9 @@ import (
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
+	"log"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -31,6 +33,13 @@ func Handle(conn net.Conn, args []resp.RESP) error {
 		handler = notFound
 	}
 
+	if command == "REPLCONF" && strings.ToUpper(args[1].Bulk) == "ACK" {
+		log.Println("warning: recieved replica ack from client handler ")
+		offset, _ := strconv.Atoi(args[2].Bulk)
+		log.Println("offset: ", offset)
+		config.Replica(conn).AckChan <- offset
+	}
+
 	conn.Write(handler(args[1:]))
 
 	if command == "PSYNC" {
@@ -40,12 +49,19 @@ func Handle(conn net.Conn, args []resp.RESP) error {
 
 	// Propagate the command to all replicas
 	if isWriteCommand(command) {
-		for _, replica := range config.Get().Replicas {
-			go func(replica *config.Node) {
-				writtenSize, _ := replica.Write(resp.Array(args...).Marshal())
+		go func() {
+			for i := 0; i < len(config.Get().Replicas); i++ {
+				replica := config.Get().Replicas[i]
+				writtenSize, err := replica.Write(resp.Array(args...).Marshal())
+				if err != nil {
+					// disconnected
+					config.RemoveReplica(replica)
+					i--
+					return
+				}
 				replica.AddOffset(writtenSize)
-			}(replica)
-		}
+			}
+		}()
 	}
 
 	return nil
