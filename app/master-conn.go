@@ -1,82 +1,48 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/handlers"
-	"github.com/jgrecu/redis-clone/app/resp"
-	"net"
-	"strings"
 )
 
-type Master struct {
-	masterAddress string
-	conn          net.Conn
-	reader        *resp.RespReader
-}
+func HandShake() error {
+	r := config.Get().Master
 
-func NewMaster() (*Master, error) {
-	address := config.Get("master_host") + ":" + config.Get("master_port")
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		return nil, err
-	}
-	return &Master{
-		masterAddress: address,
-		conn:          conn,
-		reader:        resp.NewRespReader(bufio.NewReader(conn)),
-	}, nil
-}
+	r.Send("PING")
+	value, _ := r.Read()
 
-func (m *Master) HandShake() error {
-	m.send("PING")
-	value, _ := m.reader.Read()
+	r.Send("REPLCONF", "listening-port", config.Get().Port)
+	value, _ = r.Read()
 
-	m.send("REPLCONF", "listening-port", config.Get("port"))
-	value, _ = m.reader.Read()
+	r.Send("REPLCONF", "capa", "psync2")
+	value, _ = r.Read()
 
-	m.send("REPLCONF", "capa", "psync2")
-	value, _ = m.reader.Read()
-
-	m.send("PSYNC", "?", "-1")
-	value, _ = m.reader.Read()    // +FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0
-	value, _ = m.reader.ReadRDB() // +RDBFIILE
+	r.Send("PSYNC", "?", "-1")
+	value, _ = r.Read()    // +FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0
+	value, _ = r.ReadRDB() // +RDBFIILE
 	fmt.Printf("Received response from master: %v\n", value.Bulk)
 
 	return nil
 }
 
-func (m *Master) Listen(errChan chan error) {
+func ListenMaster(errChan chan error) {
+	go listening(errChan)
+}
+
+func listening(errChan chan error) {
+	master := config.Get().Master
 	for {
-		value, err := m.reader.Read()
+		value, err := master.Read()
 		if err != nil {
 			errChan <- err
 			continue
 		}
 
 		if value.Type == "array" && len(value.Array) > 0 {
-			command := strings.ToUpper(value.Array[0].Bulk)
-			handler := handlers.GetHandler(command)
-			m.conn.Write(handler(value.Array[1:]))
+			handlers.Handle(master.Conn, value.Array)
 		} else {
 			errChan <- fmt.Errorf("invalid command")
 		}
 	}
-}
-
-func (m *Master) Close() {
-	m.conn.Close()
-}
-
-func (m *Master) send(commands ...string) error {
-	commandsArray := make([]resp.RESP, len(commands))
-	for i, command := range commands {
-		commandsArray[i] = resp.Bulk(command)
-	}
-
-	message := resp.Array(commandsArray...).Marshal()
-
-	m.conn.Write(message)
-	return nil
 }

@@ -16,7 +16,7 @@ func psync(params []resp.RESP) []byte {
 
 	if valid {
 		message := resp.String(
-			fmt.Sprintf("FULLRESYNC %s 0", config.Get("master_replid")),
+			fmt.Sprintf("FULLRESYNC %s 0", config.Get().MasterReplId),
 		).Marshal()
 
 		dbFile := getRDBFile()

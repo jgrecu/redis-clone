@@ -13,15 +13,11 @@ func info(params []resp.RESP) []byte {
 	}
 
 	if strings.ToUpper(params[0].Bulk) == "REPLICATION" {
-		role := config.Get("role")
-		masterReplId := config.Get("master_replid")
-		masterReplOffset := config.Get("master_repl_offset")
-
 		replInfo := fmt.Sprintf(
 			"role:%s\nmaster_replid:%s\nmaster_repl_offset:%s",
-			role,
-			masterReplId,
-			masterReplOffset,
+			config.Get().Role,
+			config.Get().MasterReplId,
+			config.Get().MasterReplOffset,
 		)
 		return resp.Bulk(replInfo).Marshal()
 	}

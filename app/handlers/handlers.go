@@ -4,6 +4,7 @@ import (
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
+	"net"
 	"strings"
 )
 
@@ -21,12 +22,25 @@ var handlers = map[string]func([]resp.RESP) []byte{
 	"REPLCONF": replconf,
 }
 
-func GetHandler(command string) CommandHandler {
-	handler, ok := handlers[strings.ToUpper(command)]
+func Handle(conn net.Conn, args []resp.RESP) {
+	command := strings.ToUpper(args[0].Bulk)
+	handler, ok := handlers[command]
 	if !ok {
-		return notFound
+		handler = notFound
 	}
-	return handler
+
+	if command == "PSYNC" {
+		config.AddReplica(conn)
+	}
+
+	conn.Write(handler(args[1:]))
+
+	// Propagate the command to all replicas
+	if isWriteCommand(command) {
+		for _, replica := range config.Get().Replicas {
+			replica.Write(resp.Array(args...).Marshal())
+		}
+	}
 }
 
 func ping(params []resp.RESP) []byte {
@@ -39,4 +53,8 @@ func echo(params []resp.RESP) []byte {
 
 func notFound(params []resp.RESP) []byte {
 	return resp.Error("Command not found").Marshal()
+}
+
+func isWriteCommand(command string) bool {
+	return command == "SET"
 }
