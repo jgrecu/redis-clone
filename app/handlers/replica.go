@@ -40,3 +40,8 @@ func getRDBFile() []byte {
 	}
 	return data
 }
+
+func wait(params []resp.RESP) []byte {
+	numberOfReplicas := len(config.Get().Replicas)
+	return resp.Integer(numberOfReplicas).Marshal()
+}
