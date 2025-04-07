@@ -47,19 +47,21 @@ func wait(params []resp.RESP) []byte {
 	if len(params) > 1 {
 		count, _ := strconv.Atoi(params[0].Bulk)
 		timeout, _ := strconv.Atoi(params[1].Bulk)
-		cha := make(chan bool, count)
+		cha := make(chan bool)
 		ack := 0
 		for i := 0; i < len(config.Get().Replicas); i++ {
 			replica := config.Get().Replicas[i]
 
-			if replica.Offset > 0 {
-				go func(replica config.Node) {
-					size, _ := replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
-					_, err := replica.Read()
+			if replica.GetOffset() > 0 {
+				size, _ := replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
+				replica.AddOffset(size)
+				go func(replica *config.Node) {
+					v, err := replica.Read()
 					if err != nil {
 						log.Println("Error reading REPLCONF: ", err.Error())
 					}
-					config.SetReplOffset(replica, size)
+					log.Println("REPLCONF: ", v)
+					//replica.AddOffset(size)
 					cha <- true
 				}(replica)
 			} else {
@@ -76,7 +78,7 @@ func wait(params []resp.RESP) []byte {
 				ack++
 				log.Println("ack: ", ack)
 				continue
-			case <-time.After(time.Duration(timeout) * time.Microsecond):
+			case <-time.After(time.Duration(timeout) * time.Millisecond):
 				break loop
 			}
 		}

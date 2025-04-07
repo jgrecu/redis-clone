@@ -4,36 +4,51 @@ import (
 	"bufio"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"net"
+	"sync"
 )
 
 type Node struct {
 	Conn   net.Conn
 	Reader *resp.RespReader
-	Offset int
+	offset int
 	id     string
+	mu     sync.Mutex
 }
 
-func NewNode(conn net.Conn) Node {
-	return Node{
+func NewNode(conn net.Conn) *Node {
+	return &Node{
 		Conn:   conn,
 		Reader: resp.NewRespReader(bufio.NewReader(conn)),
-		Offset: 0,
+		offset: 0,
 		id:     conn.RemoteAddr().String(),
+		mu:     sync.Mutex{},
 	}
 }
 
-func (n Node) Close() {
+func (n *Node) Close() {
 	n.Conn.Close()
 }
 
-func (n Node) Read() (resp.RESP, error) {
+func (n *Node) AddOffset(offset int) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.offset += offset
+}
+
+func (n *Node) GetOffset() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.offset
+}
+
+func (n *Node) Read() (resp.RESP, error) {
 	return n.Reader.Read()
 }
 
-func (n Node) ReadRDB() (resp.RESP, error) {
+func (n *Node) ReadRDB() (resp.RESP, error) {
 	return n.Reader.ReadRDB()
 }
 
-func (n Node) Write(data []byte) (int, error) {
+func (n *Node) Write(data []byte) (int, error) {
 	return n.Conn.Write(data)
 }
