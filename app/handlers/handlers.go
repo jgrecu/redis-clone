@@ -43,6 +43,19 @@ func Handle(conn net.Conn, args []resp.RESP) {
 	}
 }
 
+func HandleMaster(conn net.Conn, args []resp.RESP) {
+	command := strings.ToUpper(args[0].Bulk)
+	handler, ok := handlers[command]
+	if !ok {
+		handler = notFound
+	}
+
+	data := handler(args[1:])
+	if command == "REPLCONF" && strings.ToUpper(args[1].Bulk) == "GETACK" {
+		conn.Write(data)
+	}
+}
+
 func ping(params []resp.RESP) []byte {
 	return resp.String("PONG").Marshal()
 }
