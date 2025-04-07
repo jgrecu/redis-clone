@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"strconv"
 )
 
 func replconf(params []resp.RESP) []byte {
 	if params[0].Bulk == "GETACK" {
-		return resp.Command("REPLCONF", "ACK", "0").Marshal()
+		return resp.Command("REPLCONF", "ACK", strconv.Itoa(config.Get().Offset)).Marshal()
 	}
 	return resp.String("OK").Marshal()
 }
