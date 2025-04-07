@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/jgrecu/redis-clone/app/structures"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -55,7 +56,7 @@ func (r *RDB) readKeys() (structures.RedisDB, error) {
 		}
 		switch typ {
 		case 0xFE:
-			fmt.Println("start reading database info...")
+			log.Println("start reading database info...")
 			return r.startDBRead()
 		case 0xFF:
 			return nil, fmt.Errorf("invalid RDB file: unexpected EOF")

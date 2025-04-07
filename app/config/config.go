@@ -2,8 +2,8 @@ package config
 
 import (
 	"flag"
-	"fmt"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -26,7 +26,8 @@ type Config struct {
 var (
 	configs  *Config = &Config{}
 	once     sync.Once
-	fieldMap = map[string]*string{
+	mu       sync.RWMutex = sync.RWMutex{}
+	fieldMap              = map[string]*string{
 		"dir":                &configs.Dir,
 		"dbFileName":         &configs.DbFileName,
 		"port":               &configs.Port,
@@ -56,13 +57,12 @@ func Get() *Config {
 			configs.MasterPort = strings.Split(*replicaof, " ")[1]
 			masterConn, err := net.Dial("tcp", configs.MasterHost+":"+configs.MasterPort)
 			if err != nil {
-				fmt.Println("Error connecting to master: ", err.Error())
+				log.Println("Error connecting to master: ", err.Error())
 			} else {
 				configs.Master = NewNode(masterConn)
 			}
 		} else {
 			configs.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-			configs.MasterReplOffset = "0"
 		}
 
 		configs.Replicas = make([]Node, 0)
@@ -73,6 +73,8 @@ func Get() *Config {
 
 func GetConfigHandler(params []resp.RESP) []byte {
 	if len(params) > 1 && params[0].Bulk == "GET" {
+		mu.RLock()
+		defer mu.RUnlock()
 		value, ok := fieldMap[params[1].Bulk]
 		if !ok {
 			return resp.Nil().Marshal()
@@ -88,9 +90,18 @@ func GetConfigHandler(params []resp.RESP) []byte {
 }
 
 func AddReplica(conn net.Conn) {
+	mu.Lock()
 	configs.Replicas = append(configs.Replicas, NewNode(conn))
+	mu.Unlock()
 }
 
+func SetReplOffset(index int, offset int) {
+	mu.Lock()
+	configs.Replicas[index].Offset += offset
+	mu.Unlock()
+}
 func IncreaseOffset(num int) {
+	mu.Lock()
 	configs.Offset += num
+	mu.Unlock()
 }

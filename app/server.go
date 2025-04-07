@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/handlers"
 	"github.com/jgrecu/redis-clone/app/rdb"
@@ -20,7 +19,7 @@ func main() {
 
 	l, err := net.Listen("tcp", "0.0.0.0:"+conf.Port)
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
+		log.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
 	defer l.Close()
@@ -28,7 +27,7 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection: ", err.Error())
+			log.Println("Error accepting connection: ", err.Error())
 			break
 		}
 
@@ -38,7 +37,7 @@ func main() {
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
-	fmt.Println("Received connection: ", conn.RemoteAddr().String())
+	//fmt.Println("Received connection: ", conn.RemoteAddr().String())
 
 	reader := resp.NewRespReader(bufio.NewReader(conn))
 	for {
@@ -49,11 +48,15 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if readMsg.Type != "array" || len(readMsg.Array) < 1 {
-			fmt.Println("Invalid command")
+			log.Println("Invalid command")
 			break
 		}
 
-		handlers.Handle(conn, readMsg.Array)
+		err = handlers.Handle(conn, readMsg.Array)
+		if err != nil {
+			log.Println("this is a replica")
+			return
+		}
 	}
 }
 
@@ -69,7 +72,7 @@ func setup() error {
 
 		go func() {
 			err := <-errChan
-			fmt.Println("Error reading from master: ", err.Error())
+			log.Println("Error reading from master: ", err.Error())
 		}()
 	}
 
@@ -78,7 +81,7 @@ func setup() error {
 func initializeMapStore() {
 	redisDB, err := rdb.ReadFromRDB(config.Get().Dir, config.Get().DbFileName)
 	if err != nil {
-		fmt.Println("Error loading Database from file: ", err.Error())
+		log.Println("Error loading Database from file: ", err.Error())
 	} else {
 		structures.LoadKeys(redisDB)
 	}

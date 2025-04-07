@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
@@ -23,25 +24,29 @@ var handlers = map[string]func([]resp.RESP) []byte{
 	"WAIT":     wait,
 }
 
-func Handle(conn net.Conn, args []resp.RESP) {
+func Handle(conn net.Conn, args []resp.RESP) error {
 	command := strings.ToUpper(args[0].Bulk)
 	handler, ok := handlers[command]
 	if !ok {
 		handler = notFound
 	}
 
+	conn.Write(handler(args[1:]))
+
 	if command == "PSYNC" {
 		config.AddReplica(conn)
+		return fmt.Errorf("PSYNC")
 	}
-
-	conn.Write(handler(args[1:]))
 
 	// Propagate the command to all replicas
 	if isWriteCommand(command) {
-		for _, replica := range config.Get().Replicas {
-			replica.Write(resp.Array(args...).Marshal())
+		for index, replica := range config.Get().Replicas {
+			writtenSize, _ := replica.Write(resp.Array(args...).Marshal())
+			config.SetReplOffset(index, writtenSize)
 		}
 	}
+
+	return nil
 }
 
 func HandleMaster(conn net.Conn, args []resp.RESP) {

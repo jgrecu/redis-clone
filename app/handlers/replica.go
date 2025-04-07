@@ -6,6 +6,7 @@ import (
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"strconv"
+	"time"
 )
 
 func replconf(params []resp.RESP) []byte {
@@ -42,6 +43,42 @@ func getRDBFile() []byte {
 }
 
 func wait(params []resp.RESP) []byte {
+	if len(params) > 1 {
+		count, _ := strconv.Atoi(params[0].Bulk)
+		timeout, _ := strconv.Atoi(params[1].Bulk)
+		cha := make(chan bool)
+
+		for index, replica := range config.Get().Replicas {
+			go func(idx int, replica *config.Node) {
+				for {
+					replica.Write(resp.Command("REPLCONF", "GETACK", "*").Marshal())
+					_, err := replica.Read()
+					if err == nil {
+						cha <- true
+					}
+				}
+			}(index, &replica)
+		}
+
+		if count > len(config.Get().Replicas) {
+			count = len(config.Get().Replicas)
+		}
+
+		ack := 0
+	loop:
+		for i := 0; i < count; i++ {
+			// case timeout
+			select {
+			case <-cha:
+				ack++
+				continue
+			case <-time.After(time.Duration(timeout) * time.Microsecond):
+				break loop
+			}
+		}
+
+		return resp.Integer(ack).Marshal()
+	}
 	numberOfReplicas := len(config.Get().Replicas)
 	return resp.Integer(numberOfReplicas).Marshal()
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/handlers"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"log"
 )
 
 func HandShake() error {
@@ -22,7 +23,7 @@ func HandShake() error {
 	r.Write(resp.Command("PSYNC", "?", "-1").Marshal())
 	value, _ = r.Read()    // +FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0
 	value, _ = r.ReadRDB() // +RDBFIILE
-	fmt.Printf("Received response from master: %v\n", value.Bulk)
+	log.Printf("Received response from master: %v\n", value.Bulk)
 
 	return nil
 }
