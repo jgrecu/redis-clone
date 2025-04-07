@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/jgrecu/redis-clone/app/rdb"
 	"github.com/jgrecu/redis-clone/app/resp"
+	"github.com/jgrecu/redis-clone/app/structures"
 	"log"
 	"net"
 	"os"
@@ -19,6 +21,8 @@ func main() {
 
 	SetConfig("dir", *dir)
 	SetConfig("dbFileName", *dbFileName)
+
+	initializeMapStore(*dir, *dbFileName)
 
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -68,5 +72,15 @@ func handleConnection(conn net.Conn) {
 			continue
 		}
 		conn.Write(res)
+	}
+}
+
+func initializeMapStore(dir, dbFileName string) {
+	// load rdb
+	redisDB, err := rdb.ReadFromRDB(dir, dbFileName)
+	if err != nil {
+		fmt.Println("Error loading Database from file: ", err.Error())
+	} else {
+		structures.LoadKeys(redisDB)
 	}
 }

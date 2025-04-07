@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
-type mapValue struct {
+type MapValue struct {
 	Value  string
 	Expiry time.Time
 }
 
-var mapStore = make(map[string]mapValue, 0)
+type RedisDB = map[string]MapValue
+
+var mapStore = make(RedisDB, 0)
 var mut = sync.RWMutex{}
 
 func Get(params []resp.RESP) resp.RESP {
@@ -71,7 +73,7 @@ func Set(params []resp.RESP) resp.RESP {
 	}
 
 	mut.Lock()
-	mapStore[params[0].Bulk] = mapValue{
+	mapStore[params[0].Bulk] = MapValue{
 		Value:  params[1].Bulk,
 		Expiry: expirationDate,
 	}
@@ -106,4 +108,10 @@ func Keys(params []resp.RESP) resp.RESP {
 		Type:  "array",
 		Array: keys,
 	}
+}
+
+func LoadKeys(redisDb RedisDB) {
+	mut.Lock()
+	mapStore = redisDb
+	mut.Unlock()
 }
