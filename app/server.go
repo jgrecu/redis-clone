@@ -34,8 +34,6 @@ func main() {
 		masterPort := strings.Split(*replicaof, " ")[1]
 		config.Set("master_host", masterHost)
 		config.Set("master_port", masterPort)
-
-		handShake()
 	} else {
 		config.Set("role", "master")
 	}
@@ -43,7 +41,7 @@ func main() {
 	config.Set("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb")
 	config.Set("master_repl_offset", "0")
 
-	initializeMapStore(*dir, *dbFileName)
+	setup()
 
 	l, err := net.Listen("tcp", "0.0.0.0:"+*port)
 	if err != nil {
@@ -90,8 +88,32 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func initializeMapStore(dir, dbFileName string) {
+func setup() error {
+	// initialise the map if edb file is found
+	initializeMapStore()
+
+	// handle the replica if it's a slave
+	if config.Get("role") == "slave" {
+		masterConn, err := NewMaster()
+		if err != nil {
+			return err
+		}
+
+		masterConn.HandShake()
+		errChan := make(chan error)
+		masterConn.Listen(errChan)
+		go func() {
+			err := <-errChan
+			fmt.Println("Error reading from master: ", err.Error())
+		}()
+	}
+
+	return nil
+}
+func initializeMapStore() {
 	// load rdb
+	dir := config.Get("dir")
+	dbFileName := config.Get("dbFileName")
 	redisDB, err := rdb.ReadFromRDB(dir, dbFileName)
 	if err != nil {
 		fmt.Println("Error loading Database from file: ", err.Error())
