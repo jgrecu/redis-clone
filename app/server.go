@@ -30,6 +30,12 @@ func main() {
 
 	if *replicaof != "" {
 		config.Set("role", "slave")
+		masterHost := strings.Split(*replicaof, " ")[0]
+		masterPort := strings.Split(*replicaof, " ")[1]
+		config.Set("master_host", masterHost)
+		config.Set("master_port", masterPort)
+
+		handShake(masterHost + ":" + masterPort)
 	} else {
 		config.Set("role", "master")
 	}
