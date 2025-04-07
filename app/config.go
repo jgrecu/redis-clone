@@ -8,7 +8,12 @@ func SetConfig(key, value string) {
 	configs[key] = value
 }
 
-func GetConfig(params []resp.RESP) resp.RESP {
+func GetConfig(key string) (string, bool) {
+	value, ok := configs[key]
+	return value, ok
+}
+
+func GetConfigHandler(params []resp.RESP) resp.RESP {
 	if len(params) > 1 && params[0].Bulk == "GET" {
 		value, ok := configs[params[1].Bulk]
 		if !ok {

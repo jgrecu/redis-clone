@@ -18,10 +18,13 @@ func main() {
 	dir := flag.String("dir", "", "Directory to serve files from")
 	dbFileName := flag.String("dbFileName", "dump.rdb", "Filename to save the Database to")
 	port := flag.String("port", "6379", "Port to serve on")
+	replicaof := flag.String("replicaof", "", "Address of master of server")
 	flag.Parse()
 
 	SetConfig("dir", *dir)
 	SetConfig("dbFileName", *dbFileName)
+	SetConfig("port", *port)
+	SetConfig("replicaof", *replicaof)
 
 	initializeMapStore(*dir, *dbFileName)
 
