@@ -7,12 +7,9 @@ import (
 	"strings"
 )
 
-func info(params []resp.RESP) resp.RESP {
+func info(params []resp.RESP) []byte {
 	if len(params) < 1 {
-		return resp.RESP{
-			Type: "error",
-			Bulk: "ERR wrong number of arguments for 'info' command",
-		}
+		return resp.Error("ERR wrong number of arguments for 'info' command").Marshal()
 	}
 
 	if strings.ToUpper(params[0].Bulk) == "REPLICATION" {
@@ -26,13 +23,8 @@ func info(params []resp.RESP) resp.RESP {
 			masterReplId,
 			masterReplOffset,
 		)
-		return resp.RESP{
-			Type: "bulk",
-			Bulk: replInfo,
-		}
+		return resp.Bulk(replInfo).Marshal()
 	}
 
-	return resp.RESP{
-		Type: "nil",
-	}
+	return resp.Nil().Marshal()
 }

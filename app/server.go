@@ -86,12 +86,7 @@ func handleConnection(conn net.Conn) {
 
 		handler := handlers.GetHandler(command)
 
-		res, err := handler(readMsg.Array[1:]).Marshal()
-		if err != nil {
-			fmt.Println("Error marshaling response for command:", command, "-", err.Error())
-			continue
-		}
-		conn.Write(res)
+		conn.Write(handler(readMsg.Array[1:]))
 	}
 }
 

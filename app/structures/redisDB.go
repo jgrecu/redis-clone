@@ -17,12 +17,9 @@ type RedisDB = map[string]MapValue
 var mapStore = make(RedisDB, 0)
 var mut = sync.RWMutex{}
 
-func Get(params []resp.RESP) resp.RESP {
+func Get(params []resp.RESP) []byte {
 	if len(params) != 1 {
-		return resp.RESP{
-			Type: "error",
-			Bulk: "ERR wrong number of arguments for 'get' command",
-		}
+		return resp.Error("ERR wrong number of arguments for 'get' command").Marshal()
 	}
 
 	mut.RLock()
@@ -30,9 +27,7 @@ func Get(params []resp.RESP) resp.RESP {
 	mut.RUnlock()
 
 	if !ok {
-		return resp.RESP{
-			Type: "nil",
-		}
+		resp.Nil().Marshal()
 	}
 
 	if !value.Expiry.IsZero() && value.Expiry.Before(time.Now()) {
@@ -40,23 +35,15 @@ func Get(params []resp.RESP) resp.RESP {
 		delete(mapStore, params[0].Bulk)
 		mut.Unlock()
 
-		return resp.RESP{
-			Type: "nil",
-		}
+		return resp.Nil().Marshal()
 	}
 
-	return resp.RESP{
-		Type: "bulk",
-		Bulk: value.Value,
-	}
+	return resp.Bulk(value.Value).Marshal()
 }
 
-func Set(params []resp.RESP) resp.RESP {
+func Set(params []resp.RESP) []byte {
 	if len(params) < 2 {
-		return resp.RESP{
-			Type: "error",
-			Bulk: "ERR wrong number of arguments for 'set' command",
-		}
+		return resp.Error("ERR wrong number of arguments for 'set' command").Marshal()
 	}
 
 	expirationDate := time.Time{}
@@ -64,10 +51,7 @@ func Set(params []resp.RESP) resp.RESP {
 	if len(params) >= 4 && strings.ToUpper(params[2].Bulk) == "PX" {
 		expiry, err := time.ParseDuration(params[3].Bulk + "ms")
 		if err != nil {
-			return resp.RESP{
-				Type: "error",
-				Bulk: "ERR value is not an integer or out of range",
-			}
+			return resp.Error("ERR invalid expire time in set command").Marshal()
 		}
 		expirationDate = time.Now().Add(expiry)
 	}
@@ -79,18 +63,12 @@ func Set(params []resp.RESP) resp.RESP {
 	}
 	mut.Unlock()
 
-	return resp.RESP{
-		Type: "string",
-		Bulk: "OK",
-	}
+	return resp.String("OK").Marshal()
 }
 
-func Keys(params []resp.RESP) resp.RESP {
+func Keys(params []resp.RESP) []byte {
 	if len(params) != 1 {
-		return resp.RESP{
-			Type: "error",
-			Bulk: "ERR wrong number of arguments for 'keys' command",
-		}
+		return resp.Error("ERR wrong number of arguments for 'keys' command").Marshal()
 	}
 
 	mut.RLock()
@@ -104,10 +82,7 @@ func Keys(params []resp.RESP) resp.RESP {
 		})
 	}
 
-	return resp.RESP{
-		Type:  "array",
-		Array: keys,
-	}
+	return resp.Array(keys...).Marshal()
 }
 
 func LoadKeys(redisDb RedisDB) {

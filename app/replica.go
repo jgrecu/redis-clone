@@ -40,11 +40,7 @@ func send(conn net.Conn, commands ...string) error {
 		commandsArray[i] = resp.Bulk(command)
 	}
 
-	message, err := resp.Array(commandsArray).Marshal()
-
-	if err != nil {
-		return err
-	}
+	message := resp.Array(commandsArray...).Marshal()
 
 	conn.Write(message)
 	return nil

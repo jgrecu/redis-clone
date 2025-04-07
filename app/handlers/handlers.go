@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-type CommandHandler func([]resp.RESP) resp.RESP
+type CommandHandler func([]resp.RESP) []byte
 
-var handlers = map[string]CommandHandler{
+var handlers = map[string]func([]resp.RESP) []byte{
 	"GET":      structures.Get,
 	"SET":      structures.Set,
 	"CONFIG":   config.GetConfigHandler,
@@ -29,20 +29,14 @@ func GetHandler(command string) CommandHandler {
 	return handler
 }
 
-func ping(params []resp.RESP) resp.RESP {
-	return resp.RESP{
-		Type: "string",
-		Bulk: "PONG",
-	}
+func ping(params []resp.RESP) []byte {
+	return resp.String("PONG").Marshal()
 }
 
-func echo(params []resp.RESP) resp.RESP {
-	return resp.RESP{
-		Type: "bulk",
-		Bulk: params[0].Bulk,
-	}
+func echo(params []resp.RESP) []byte {
+	return resp.String(params[0].Bulk).Marshal()
 }
 
-func notFound(params []resp.RESP) resp.RESP {
-	return resp.Error("Command not found")
+func notFound(params []resp.RESP) []byte {
+	return resp.Error("Command not found").Marshal()
 }
