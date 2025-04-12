@@ -79,3 +79,47 @@ func XRange(params []resp.RESP) []byte {
 
 	return resp.Array(res...).Marshal()
 }
+
+func XRead(params []resp.RESP) []byte {
+	if len(params)%2 != 1 {
+		return resp.Error("ERR wrong number of arguments for 'xread' command").Marshal()
+	}
+
+	mut.RLock()
+	defer mut.RUnlock()
+
+	streams := make([]resp.RESP, 0)
+
+	streamKeyLen := (len(params)-1)/2 + 1
+	for i := 1; i < streamKeyLen+1; i++ {
+		streamKey := params[i].Bulk
+		val, ok := mapStore[streamKey]
+		if !ok || val.Typ != "stream" {
+			continue
+		}
+
+		stream := val.Stream
+
+		startKey := params[i+streamKeyLen].Bulk
+		entries := stream.Read(startKey)
+		for _, entry := range entries {
+			pairs := []resp.RESP{}
+			for k, v := range entry.Pairs {
+				pairs = append(pairs, resp.Bulk(k), resp.Bulk(v))
+			}
+
+			streams = append(
+				streams,
+				resp.Array(
+					resp.Bulk(streamKey),
+					resp.Array(
+						resp.Bulk(entry.Key()),
+						resp.Array(pairs...),
+					),
+				),
+			)
+		}
+	}
+
+	return resp.Array(streams...).Marshal()
+}
