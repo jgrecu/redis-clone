@@ -1,7 +1,9 @@
 package structures
 
 import (
+    "fmt"
     "github.com/jgrecu/redis-clone/app/resp"
+    "log"
     "math"
     "strconv"
     "strings"
@@ -82,19 +84,15 @@ func XRange(params []resp.RESP) []byte {
     return resp.Array(res...).Marshal()
 }
 
-func xReadStreams(params []resp.RESP) resp.RESP {
-    if len(params)%2 != 0 {
-        return resp.Error("ERR wrong number of arguments for 'xread' command")
-    }
-
+func xReadStreams(streamKeys, ids []string) resp.RESP {
     mut.RLock()
     defer mut.RUnlock()
 
     streams := []resp.RESP{}
 
-    streamLen := len(params) / 2
+    streamLen := len(streamKeys)
     for i := 1; i < streamLen; i++ {
-        streamKey := params[i].Bulk
+        streamKey := streamKeys[i]
         val, ok := mapStore[streamKey]
         if !ok || val.Typ != "stream" {
             continue
@@ -102,7 +100,7 @@ func xReadStreams(params []resp.RESP) resp.RESP {
 
         stream := val.Stream
 
-        startKey := params[i+streamLen].Bulk
+        startKey := ids[i]
         entries := stream.Read(startKey)
         for _, entry := range entries {
             pairs := []resp.RESP{}
@@ -134,7 +132,11 @@ func XRead(params []resp.RESP) []byte {
     }
 
     if strings.ToUpper(params[0].Bulk) == "STREAMS" {
-        return xReadStreams(params[1:]).Marshal()
+        streamKeys, ids, err := formatKeys(params[1:])
+        if err != nil {
+            return resp.Error(err.Error()).Marshal()
+        }
+        return xReadStreams(streamKeys, ids).Marshal()
     }
 
     if strings.ToUpper(params[0].Bulk) == "BLOCK" {
@@ -143,14 +145,19 @@ func XRead(params []resp.RESP) []byte {
             return resp.Error("ERR invalid timeout").Marshal()
         }
 
+        streamKeys, ids, err := formatKeys(params[3:])
+        if err != nil {
+            return resp.Error(err.Error()).Marshal()
+        }
+
         if wait == 0 {
             ch := make(chan bool)
-            go waitForNewEntry(params[3:], ch)
+            go waitForNewEntry(streamKeys, ch)
             <-ch
         } else {
             <-time.After(time.Duration(wait) * time.Millisecond)
         }
-        res := xReadStreams(params[3:])
+        res := xReadStreams(streamKeys, ids)
 
         if res.Type == "array" && len(res.Array) == 0 {
             return resp.Nil().Marshal()
@@ -161,26 +168,23 @@ func XRead(params []resp.RESP) []byte {
     return resp.Nil().Marshal()
 }
 
-func waitForNewEntry(params []resp.RESP, ch chan bool) {
-    halfLen := len(params) / 2
-    streams := params[:halfLen]
-    originalSize := streamSize(streams)
-
+func waitForNewEntry(streamKeys []string, ch chan bool) {
+    originalSize := streamSize(streamKeys)
     for {
-        newSize := streamSize(streams)
+        newSize := streamSize(streamKeys)
         if newSize > originalSize {
             ch <- true
             return
         }
 
-        <-time.After(100 * time.Millisecond)
+        <-time.After(50 * time.Millisecond)
     }
 }
 
-func streamSize(streams []resp.RESP) int {
+func streamSize(streams []string) int {
     size := 0
-    for _, streamResp := range streams {
-        stream, ok := mapStore[streamResp.Bulk]
+    for _, streamKey := range streams {
+        stream, ok := mapStore[streamKey]
         if !ok || stream.Typ != "stream" {
             continue
         }
@@ -188,4 +192,37 @@ func streamSize(streams []resp.RESP) int {
         size += stream.Stream.Len()
     }
     return size
+}
+
+func formatKeys(params []resp.RESP) ([]string, []string, error) {
+    if len(params)%2 != 0 {
+        return nil, nil, fmt.Errorf("ERR wrong number of arguments for 'xread' command")
+    }
+
+    streams := []string{}
+    ids := []string{}
+
+    halfLen := len(params) / 2
+    for i := 0; i < halfLen; i++ {
+        streamKey := params[i].Bulk
+        id := params[i+halfLen].Bulk
+
+        if id == "$" {
+            stream, ok := mapStore[streamKey]
+            if !ok || stream.Typ != "stream" {
+                id = "0-0"
+            } else {
+                lastTimestamp := stream.Stream.LastTimestamp()
+                lastSeq := stream.Stream.LastSeq(lastTimestamp)
+
+                id = fmt.Sprintf("%d-%d", lastTimestamp, lastSeq)
+            }
+        }
+
+        streams = append(streams, streamKey)
+        log.Println(" || streamkey (", streamKey, ") id (", id, ") || ")
+        ids = append(ids, id)
+    }
+
+    return streams, ids, nil
 }
