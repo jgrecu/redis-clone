@@ -125,23 +125,34 @@ func IncreaseOffset(num int) {
 }
 
 func AckRepl(timeout int, maxCount int) int {
-	ackChan := make(chan int)
+	ackChan := make(chan int, len(configs.Replicas))
+
 	for _, replica := range configs.Replicas {
 		go replica.SendAck(ackChan)
 	}
 
 	count := 0
+	mu := sync.Mutex{}
+	doneChan := make(chan struct{})
 
-	for {
-		select {
-		case <-ackChan:
+	go func() {
+		for range ackChan {
 			log.Println("Received ack")
+			mu.Lock()
 			count++
 			if count == maxCount {
-				return count
+				close(doneChan)
 			}
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return count
+			mu.Unlock()
 		}
+	}()
+
+	select {
+	case <-doneChan:
+		log.Println("All replicas have been acked")
+	case <-time.After(time.Duration(timeout) * time.Millisecond):
+		log.Println("Timed out reached")
 	}
+
+	return count
 }

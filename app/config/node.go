@@ -69,13 +69,13 @@ func (n *Node) SendAck(ack chan<- int) (int, error) {
 func (n *Node) ReceiveAck(offset int) {
     log.Println("Received ack from replica : ", n.id)
     n.mu.Lock()
-    defer n.mu.Unlock()
+    n.mu.Unlock()
     if len(n.AckChan) == 0 {
         return
     }
-    ch := n.AckChan[0]
+
+    n.AckChan[0] <- offset
     n.AckChan = n.AckChan[1:]
-    ch <- offset
 
     log.Println("Receive func: Ack sent through the channel")
 }
