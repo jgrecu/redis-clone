@@ -1,17 +1,17 @@
 package structures
 
 import (
-	"github.com/jgrecu/redis-clone/app/resp"
-	"strings"
-	"sync"
-	"time"
+    "github.com/jgrecu/redis-clone/app/resp"
+    "strings"
+    "sync"
+    "time"
 )
 
 type MapValue struct {
-	Typ    string
-	Stream *Stream
-	String string
-	Expiry time.Time
+    Typ    string
+    Stream *Stream
+    String string
+    Expiry time.Time
 }
 
 type RedisDB = map[string]MapValue
@@ -20,127 +20,127 @@ var mapStore = make(RedisDB, 0)
 var mut = sync.RWMutex{}
 
 func Get(params []resp.RESP) []byte {
-	if len(params) != 1 {
-		return resp.Error("ERR wrong number of arguments for 'get' command").Marshal()
-	}
+    if len(params) != 1 {
+        return resp.Error("ERR wrong number of arguments for 'get' command").Marshal()
+    }
 
-	mut.RLock()
-	value, ok := mapStore[params[0].Bulk]
-	mut.RUnlock()
+    mut.RLock()
+    value, ok := mapStore[params[0].Bulk]
+    mut.RUnlock()
 
-	if !ok {
-		resp.Nil().Marshal()
-	}
+    if !ok {
+        resp.Nil().Marshal()
+    }
 
-	if !value.Expiry.IsZero() && value.Expiry.Before(time.Now()) {
-		mut.Lock()
-		delete(mapStore, params[0].Bulk)
-		mut.Unlock()
+    if !value.Expiry.IsZero() && value.Expiry.Before(time.Now()) {
+        mut.Lock()
+        delete(mapStore, params[0].Bulk)
+        mut.Unlock()
 
-		return resp.Nil().Marshal()
-	}
+        return resp.Nil().Marshal()
+    }
 
-	return resp.Bulk(value.String).Marshal()
+    return resp.Bulk(value.String).Marshal()
 }
 
 func Set(params []resp.RESP) []byte {
-	if len(params) < 2 {
-		return resp.Error("ERR wrong number of arguments for 'set' command").Marshal()
-	}
+    if len(params) < 2 {
+        return resp.Error("ERR wrong number of arguments for 'set' command").Marshal()
+    }
 
-	expirationDate := time.Time{}
+    expirationDate := time.Time{}
 
-	if len(params) >= 4 && strings.ToUpper(params[2].Bulk) == "PX" {
-		expiry, err := time.ParseDuration(params[3].Bulk + "ms")
-		if err != nil {
-			return resp.Error("ERR invalid expire time in set command").Marshal()
-		}
-		expirationDate = time.Now().Add(expiry)
-	}
+    if len(params) >= 4 && strings.ToUpper(params[2].Bulk) == "PX" {
+        expiry, err := time.ParseDuration(params[3].Bulk + "ms")
+        if err != nil {
+            return resp.Error("ERR invalid expire time in set command").Marshal()
+        }
+        expirationDate = time.Now().Add(expiry)
+    }
 
-	mut.Lock()
-	mapStore[params[0].Bulk] = MapValue{
-		Typ:    "string",
-		String: params[1].Bulk,
-		Expiry: expirationDate,
-	}
-	mut.Unlock()
+    mut.Lock()
+    mapStore[params[0].Bulk] = MapValue{
+        Typ:    "string",
+        String: params[1].Bulk,
+        Expiry: expirationDate,
+    }
+    mut.Unlock()
 
-	return resp.String("OK").Marshal()
+    return resp.String("OK").Marshal()
 }
 
 func Keys(params []resp.RESP) []byte {
-	if len(params) != 1 {
-		return resp.Error("ERR wrong number of arguments for 'keys' command").Marshal()
-	}
+    if len(params) != 1 {
+        return resp.Error("ERR wrong number of arguments for 'keys' command").Marshal()
+    }
 
-	mut.RLock()
-	defer mut.RUnlock()
+    mut.RLock()
+    defer mut.RUnlock()
 
-	keys := make([]resp.RESP, 0)
-	for key := range mapStore {
-		keys = append(keys, resp.RESP{
-			Type: "bulk",
-			Bulk: key,
-		})
-	}
+    keys := make([]resp.RESP, 0)
+    for key := range mapStore {
+        keys = append(keys, resp.RESP{
+            Type: "bulk",
+            Bulk: key,
+        })
+    }
 
-	return resp.Array(keys...).Marshal()
+    return resp.Array(keys...).Marshal()
 }
 
 func LoadKeys(redisDb RedisDB) {
-	mut.Lock()
-	mapStore = redisDb
-	mut.Unlock()
+    mut.Lock()
+    mapStore = redisDb
+    mut.Unlock()
 }
 
 func Xadd(params []resp.RESP) []byte {
-	if len(params) < 2 {
-		return resp.Error("ERR wrong number of arguments for 'xadd' command").Marshal()
-	}
+    if len(params) < 2 {
+        return resp.Error("ERR wrong number of arguments for 'xadd' command").Marshal()
+    }
 
-	mut.Lock()
-	defer mut.Unlock()
+    mut.Lock()
+    defer mut.Unlock()
 
-	stream, ok := mapStore[params[0].Bulk]
-	entryKey := params[1].Bulk
+    stream, ok := mapStore[params[0].Bulk]
+    entryKey := params[1].Bulk
 
-	newMAp := make(map[string]string, 0)
-	for i := 2; i < len(params); i += 2 {
-		if i+1 < len(params) {
-			newMAp[params[i].Bulk] = params[i+1].Bulk
-		}
-	}
+    newMAp := make(map[string]string, 0)
+    for i := 2; i < len(params); i += 2 {
+        if i+1 < len(params) {
+            newMAp[params[i].Bulk] = params[i+1].Bulk
+        }
+    }
 
-	if !ok {
-		stream = MapValue{
-			Typ:    "stream",
-			Stream: NewStream(),
-		}
-	}
+    if !ok {
+        stream = MapValue{
+            Typ:    "stream",
+            Stream: NewStream(),
+        }
+    }
 
-	err := stream.Stream.Add(entryKey, newMAp)
-	if err != nil {
-		return resp.Error(err.Error()).Marshal()
-	}
+    err := stream.Stream.Add(entryKey, newMAp)
+    if err != nil {
+        return resp.Error(err.Error()).Marshal()
+    }
 
-	mapStore[params[0].Bulk] = stream
+    mapStore[params[0].Bulk] = stream
 
-	return resp.Bulk("0-1").Marshal()
+    return resp.Bulk(entryKey).Marshal()
 }
 
 func Typ(params []resp.RESP) []byte {
-	if len(params) != 1 {
-		return resp.Error("ERR wrong number of arguments for 'type' command").Marshal()
-	}
+    if len(params) != 1 {
+        return resp.Error("ERR wrong number of arguments for 'type' command").Marshal()
+    }
 
-	mut.RLock()
-	defer mut.RUnlock()
+    mut.RLock()
+    defer mut.RUnlock()
 
-	value, ok := mapStore[params[0].Bulk]
-	if !ok {
-		return resp.String("none").Marshal()
-	}
+    value, ok := mapStore[params[0].Bulk]
+    if !ok {
+        return resp.String("none").Marshal()
+    }
 
-	return resp.Bulk(value.Typ).Marshal()
+    return resp.Bulk(value.Typ).Marshal()
 }
