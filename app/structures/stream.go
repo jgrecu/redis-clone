@@ -16,15 +16,13 @@ type Stream struct {
     Entries       map[int64][]Entry
     size          int
     lastTimestamp int64
-    lastSequence  int
 }
 
 func NewStream() *Stream {
     return &Stream{
         Entries:       map[int64][]Entry{},
         size:          0,
-        lastTimestamp: 0,
-        lastSequence:  0,
+        lastTimestamp: -1,
     }
 }
 
@@ -51,7 +49,6 @@ func (s *Stream) Add(key string, pairs map[string]string) error {
     s.size++
     if timestamp > s.lastTimestamp {
         s.lastTimestamp = timestamp
-        s.lastSequence = seq
     }
 
     return nil
@@ -97,6 +94,10 @@ func (s *Stream) formatKey(timestamp int64, strSeq string) (int64, int, error) {
 
     if strSeq == "*" {
         lastSeq := s.LastSeq(timestamp)
+        if timestamp == 0 && lastSeq == -1 {
+            lastSeq = 0
+        }
+
         return timestamp, lastSeq + 1, nil
     }
 
