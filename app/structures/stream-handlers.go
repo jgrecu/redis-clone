@@ -2,6 +2,7 @@ package structures
 
 import (
 	"github.com/jgrecu/redis-clone/app/resp"
+	"log"
 	"math"
 	"strconv"
 )
@@ -121,5 +122,7 @@ func XRead(params []resp.RESP) []byte {
 		}
 	}
 
-	return resp.Array(streams...).Marshal()
+	res := resp.Array(streams...).Marshal()
+	log.Printf("XREAD: %s\n", string(res))
+	return res
 }
