@@ -64,6 +64,7 @@ func Get() *Config {
 			}
 		} else {
 			configs.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+			configs.MasterReplOffset = "0"
 		}
 
 		configs.Replicas = make([]*Node, 0)
