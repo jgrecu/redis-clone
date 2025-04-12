@@ -5,6 +5,7 @@ import (
 	"github.com/jgrecu/redis-clone/app/config"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"github.com/jgrecu/redis-clone/app/structures"
+	"github.com/jgrecu/redis-clone/app/transactions"
 	"log"
 	"net"
 	"strconv"
@@ -28,6 +29,7 @@ var handlers = map[string]func([]resp.RESP) []byte{
 	"XADD":     structures.Xadd,
 	"XRANGE":   structures.XRange,
 	"XREAD":    structures.XRead,
+	"INCR":     transactions.Incr,
 }
 
 func Handle(conn net.Conn, args []resp.RESP) error {
