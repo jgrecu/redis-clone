@@ -1,4 +1,4 @@
-package transactions
+package transaction
 
 import (
 	"github.com/jgrecu/redis-clone/app/resp"
