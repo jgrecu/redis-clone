@@ -74,11 +74,11 @@ func (s *Stream) validateKey(timestamp int64, seq int) error {
 		return nil
 	}
 
-	if _, ok := s.Entries[timestamp]; !ok {
-		if (timestamp < s.lastTimestamp) || (timestamp == s.lastTimestamp && seq <= s.LastSeq(timestamp)) {
-			return fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
-		}
+	//if _, ok := s.Entries[timestamp]; !ok {
+	if (timestamp < s.lastTimestamp) || (timestamp == s.lastTimestamp && seq <= s.LastSeq(timestamp)) {
+		return fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
 	}
+	//}
 
 	return nil
 }
