@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"github.com/jgrecu/redis-clone/app/config"
-	"github.com/jgrecu/redis-clone/app/handlers"
 	"github.com/jgrecu/redis-clone/app/rdb"
-	"github.com/jgrecu/redis-clone/app/resp"
+	respConnection "github.com/jgrecu/redis-clone/app/resp-connection"
 	"github.com/jgrecu/redis-clone/app/structures"
 	"log"
 	"net"
@@ -31,39 +29,49 @@ func main() {
 			break
 		}
 
-		go handleConnection(conn)
+		client := respConnection.NewRespConn(conn)
+		go client.Listen()
 	}
 }
 
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	reader := resp.NewRespReader(bufio.NewReader(conn))
-	for {
-		readMsg, err := reader.Read()
-		if err != nil {
-			log.Println("Error reading from connection: ", err.Error())
-			break
-		}
-
-		if readMsg.Type != "array" || len(readMsg.Array) < 1 {
-			log.Println("Invalid command")
-			break
-		}
-
-		handlers.Handle(conn, readMsg.Array)
-	}
-}
+//func handleConnection(conn net.Conn) {
+//	defer conn.Close()
+//
+//	reader := resp.NewRespReader(bufio.NewReader(conn))
+//	for {
+//		readMsg, err := reader.Read()
+//		if err != nil {
+//			log.Println("Error reading from connection: ", err.Error())
+//			break
+//		}
+//
+//		if readMsg.Type != "array" || len(readMsg.Array) < 1 {
+//			log.Println("Invalid command")
+//			break
+//		}
+//
+//		handlers.Handle(conn, readMsg.Array)
+//	}
+//}
 
 func setup() error {
 	// initialise the map if edb file is found
 	initializeMapStore()
 
-	// handle the replica if it's a slave
+	// if handle the replica if it's a slave
 	if config.Get().Role == "slave" {
-		HandShake()
+		masterHost := config.Get().MasterHost
+		masterPort := config.Get().MasterPort
+		masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
+		if err != nil {
+			log.Println("Failed to connect to master: ", err.Error())
+			return err
+		}
+
+		master := respConnection.NewRespConn(masterConn)
+		master.HandleShake()
 		errChan := make(chan error)
-		ListenMaster(errChan)
+		go master.ListenOnMaster(errChan)
 
 		go func() {
 			err := <-errChan
