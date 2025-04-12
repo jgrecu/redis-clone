@@ -48,17 +48,19 @@ func (s *Stream) Add(key string, pairs map[string]string) (string, error) {
 		s.lastTimestamp = timestamp
 	}
 
-	return newEntry.Key, nil
+	return newEntry.Key(), nil
 }
 
 func (s *Stream) Get(key string) (map[string]string, bool) {
-	timestamp, _, err := parseKey(key)
+	timestamp, seqStr, err := parseKey(key)
 	if err != nil {
 		return nil, false
 	}
 
+	seq, _ := strconv.Atoi(seqStr)
+
 	for _, e := range s.Entries[timestamp] {
-		if e.Key == key {
+		if e.seq == seq {
 			return e.Pairs, true
 		}
 	}
@@ -138,20 +140,33 @@ func (s *Stream) Len() int {
 }
 
 func (s *Stream) Range(start, end string) []Entry {
-	startTimestamp, _, err := parseKey(start)
+	startTimestamp, startSeqStr, err := parseKey(start)
 	if err != nil {
 		return []Entry{}
 	}
 
-	endTimestamp, _, err := parseKey(end)
+	endTimestamp, endSeqStr, err := parseKey(end)
 	if err != nil {
 		return []Entry{}
 	}
+
+	startSeq, _ := strconv.Atoi(startSeqStr)
+	endSeq, _ := strconv.Atoi(endSeqStr)
 
 	entries := []Entry{}
 	for timestamp, entry := range s.Entries {
 		if timestamp >= startTimestamp && timestamp <= endTimestamp {
-			entries = append(entries, entry...)
+			for _, e := range entry {
+				if timestamp == startTimestamp && e.Seq() < startSeq {
+					continue
+				}
+
+				if timestamp == endTimestamp && e.Seq() > endSeq {
+					continue
+				}
+
+				entries = append(entries, e)
+			}
 		}
 	}
 
