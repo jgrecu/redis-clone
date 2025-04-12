@@ -1,6 +1,10 @@
 package structures
 
-import "github.com/jgrecu/redis-clone/app/resp"
+import (
+	"github.com/jgrecu/redis-clone/app/resp"
+	"math"
+	"strconv"
+)
 
 func Xadd(params []resp.RESP) []byte {
 	if len(params) < 2 {
@@ -54,11 +58,11 @@ func XRange(params []resp.RESP) []byte {
 	end := params[2].Bulk
 
 	if start == "-" {
-		start = "0"
+		start = "0-0"
 	}
 
 	if end == "+" {
-		end = "99999999999999999"
+		end = strconv.Itoa(math.MaxInt) + "-" + strconv.Itoa(math.MaxInt)
 	}
 
 	entries := value.Stream.Range(start, end)
