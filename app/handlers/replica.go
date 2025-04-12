@@ -7,7 +7,6 @@ import (
     "github.com/jgrecu/redis-clone/app/resp"
     "log"
     "strconv"
-    "time"
 )
 
 func replconf(params []resp.RESP) []byte {
@@ -44,43 +43,10 @@ func getRDBFile() []byte {
 }
 
 func wait(params []resp.RESP) []byte {
+    log.Println("Received WAIT command: ", params)
     count, _ := strconv.Atoi(params[0].Bulk)
     timeout, _ := strconv.Atoi(params[1].Bulk)
-    chanAck := make(chan int)
-    ack := 0
-    for i := 0; i < len(config.Get().Replicas); i++ {
-        replica := config.Get().Replicas[i]
+    acks := config.AckRepl(timeout, count)
 
-        if replica.GetOffset() > 0 {
-            go func(replica *config.Node, ack chan int) {
-                chann := make(chan int)
-                size, err := replica.SendAck(chann)
-                if err != nil {
-                    log.Println("err REPLCONF: lost connection " + err.Error())
-                }
-                ack <- <-chann
-                log.Println("Received ack through channel ", size)
-                replica.AddOffset(size)
-            }(replica, chanAck)
-        } else {
-            ack++
-        }
-
-    }
-
-    for i := 0; i < count; i++ {
-        // case timeout
-        select {
-        case <-chanAck:
-            ack++
-            log.Println("ack: ", ack)
-        case <-time.After(time.Duration(timeout) * time.Millisecond):
-            i = count
-        }
-    }
-
-    return resp.Integer(ack).Marshal()
-
-    //numberOfReplicas := len(config.Get().Replicas)
-    //return resp.Integer(numberOfReplicas).Marshal()
+    return resp.Integer(acks).Marshal()
 }
