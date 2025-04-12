@@ -114,8 +114,10 @@ func XRead(params []resp.RESP) []byte {
 				resp.Array(
 					resp.Bulk(streamKey),
 					resp.Array(
-						resp.Bulk(entry.Key()),
-						resp.Array(pairs...),
+						resp.Array(
+							resp.Bulk(entry.Key()),
+							resp.Array(pairs...),
+						),
 					),
 				),
 			)
