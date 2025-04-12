@@ -111,9 +111,9 @@ func parseKey(key string) (int64, string, error) {
 		return -1, "*", nil
 	}
 
-	ids := strings.Split(key, "_")
-	if len(ids) != 2 {
-		return 0, "", fmt.Errorf("ERR invalid stream ID format: <timestamp>-<seq>")
+	ids := strings.Split(key, "-")
+	if len(ids) == 1 {
+		return 0, "0", nil
 	}
 
 	timestamp, err := strconv.ParseInt(ids[0], 10, 64)
@@ -135,4 +135,25 @@ func (s *Stream) LastSeq(timestamp int64) int {
 
 func (s *Stream) Len() int {
 	return s.size
+}
+
+func (s *Stream) Range(start, end string) []Entry {
+	startTimestamp, _, err := parseKey(start)
+	if err != nil {
+		return []Entry{}
+	}
+
+	endTimestamp, _, err := parseKey(end)
+	if err != nil {
+		return []Entry{}
+	}
+
+	entries := []Entry{}
+	for timestamp, entry := range s.Entries {
+		if timestamp >= startTimestamp && timestamp <= endTimestamp {
+			entries = append(entries, entry...)
+		}
+	}
+
+	return entries
 }
