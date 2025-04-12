@@ -22,9 +22,9 @@ func (c *RespConn) Multi(params []resp.RESP) []byte {
 }
 
 func (c *RespConn) Exec(params []resp.RESP) []byte {
-	if len(c.TxQueue) == 0 {
-		resp.Array().Marshal()
+	if c.TxQueue != nil {
 		c.TxQueue = nil
+		return resp.Array().Marshal()
 	}
 
 	return resp.Error("ERR EXEC without MULTI").Marshal()
