@@ -29,7 +29,7 @@ func Get(params []resp.RESP) []byte {
 	mut.RUnlock()
 
 	if !ok {
-		resp.Nil().Marshal()
+		return resp.Nil().Marshal()
 	}
 
 	if !value.Expiry.IsZero() && value.Expiry.Before(time.Now()) {
