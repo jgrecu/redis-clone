@@ -5,18 +5,17 @@ import (
     "fmt"
     "github.com/jgrecu/redis-clone/app/config"
     "github.com/jgrecu/redis-clone/app/resp"
-    "log"
     "strconv"
 )
 
-func replconf(params []resp.RESP) []byte {
+func Replconf(params []resp.RESP) []byte {
     if params[0].Bulk == "GETACK" {
         return resp.Command("REPLCONF", "ACK", strconv.Itoa(config.Get().Offset)).Marshal()
     }
     return resp.String("OK").Marshal()
 }
 
-func psync(params []resp.RESP) []byte {
+func Psync(params []resp.RESP) []byte {
     valid := len(params) > 1 && params[0].Bulk == "?" && params[1].Bulk == "-1"
 
     if valid {
@@ -40,13 +39,4 @@ func getRDBFile() []byte {
         return nil
     }
     return data
-}
-
-func wait(params []resp.RESP) []byte {
-    log.Println("Received WAIT command: ", params)
-    count, _ := strconv.Atoi(params[0].Bulk)
-    timeout, _ := strconv.Atoi(params[1].Bulk)
-    acks := config.AckRepl(timeout, count)
-
-    return resp.Integer(acks).Marshal()
 }
