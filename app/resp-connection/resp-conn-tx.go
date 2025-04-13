@@ -13,6 +13,8 @@ func (c *RespConn) GetTxHandler(command string) handlers.CommandHandler {
         return c.Multi
     case "EXEC":
         return c.Exec
+    case "DISCARD":
+        return c.Discard
     default:
         return nil
     }
@@ -40,4 +42,13 @@ func (c *RespConn) Exec(params []resp.RESP) []byte {
     }
 
     return resp.Error("ERR EXEC without MULTI").Marshal()
+}
+
+func (c *RespConn) Discard(params []resp.RESP) []byte {
+    if c.TxQueue != nil {
+        c.TxQueue = nil
+        return resp.String("OK").Marshal()
+    }
+
+    return resp.Error("ERR Discard without MULTI").Marshal()
 }
