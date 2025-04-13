@@ -61,13 +61,6 @@ func (c *RespConn) Listen() {
 func (c *RespConn) handleClient(args []resp.RESP) error {
     command := strings.ToUpper(args[0].Bulk)
 
-    // if the transaction is in progress, add the command to the queue
-    if c.TxQueue != nil {
-        c.TxQueue = append(c.TxQueue, args)
-        c.Write(resp.String("QUEUED").Marshal())
-        return nil
-    }
-
     // handle replication commands
     if command == "REPLCONF" && strings.ToUpper(args[1].Bulk) == "ACK" {
         offset, _ := strconv.Atoi(args[2].Bulk)
@@ -82,6 +75,12 @@ func (c *RespConn) handleClient(args []resp.RESP) error {
     // handle tx commands
     handler := c.GetTxHandler(command)
     if handler == nil {
+        // if no tx handler is found, use the default handler
+        if c.TxQueue != nil {
+            c.TxQueue = append(c.TxQueue, args)
+            c.Write(resp.String("QUEUED").Marshal())
+            return nil
+        }
         // if no tx handler is found, use the default handler
         handler = handlers.GetHandler(command)
     }
