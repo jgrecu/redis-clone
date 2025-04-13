@@ -20,6 +20,16 @@ Included support for Redis Streams, a data structure that enables advanced messa
 ## Transactions
 Added transaction support, allowing clients to execute multiple commands as an atomic unit, with rollback capabilities.
 
+## Testing
+The project now includes a comprehensive test suite to ensure the reliability and correctness of the implementation. Tests cover the core functionality of the Redis clone, including:
+
+- RESP protocol parsing and serialization
+- Command handling
+- Data structures
+- Connection handling
+
+See the [Testing Guidelines](tests/README.md) for more information on running tests and adding new ones.
+
 This project was a great learning experience, diving deep into the inner workings of Redis and building a functional in-memory data store from scratch.
 
 **Note**: If you're viewing this repo on GitHub, head over to
