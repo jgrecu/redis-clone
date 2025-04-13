@@ -34,26 +34,6 @@ func main() {
 	}
 }
 
-//func handleConnection(conn net.Conn) {
-//	defer conn.Close()
-//
-//	reader := resp.NewRespReader(bufio.NewReader(conn))
-//	for {
-//		readMsg, err := reader.Read()
-//		if err != nil {
-//			log.Println("Error reading from connection: ", err.Error())
-//			break
-//		}
-//
-//		if readMsg.Type != "array" || len(readMsg.Array) < 1 {
-//			log.Println("Invalid command")
-//			break
-//		}
-//
-//		handlers.Handle(conn, readMsg.Array)
-//	}
-//}
-
 func setup() error {
 	// initialise the map if edb file is found
 	initializeMapStore()
