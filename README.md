@@ -1,36 +1,87 @@
 [![progress-banner](https://backend.codecrafters.io/progress/redis/9e8e4753-aeaa-4619-9386-df276b5a61f1)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 # REDIS Clone -- Build your own Redis (CodeCrafters)
 
-Redis is an in-memory data structure store often used as a database, cache, message broker and streaming engine. In this challenge I'll build my own Redis server that is capable of serving basic commands, reading RDB files and more.
+A Redis-compatible in-memory data store built from scratch in Go. Implements core Redis functionality including the RESP wire protocol, key-value storage with expiry, streams, transactions, replication, and RDB persistence.
 
-This is my implementation of the ["Build Your Own Redis" ](https://codecrafters.io/challenges/redis) challenge from Codecrafters. I've built a Redis-compatible server using Go, covering the following key features:
+Built as part of the [Build Your Own Redis](https://codecrafters.io/challenges/redis) challenge from [CodeCrafters](https://codecrafters.io).
 
-## Command Handling
-Implemented the basic Redis command protocol to handle common commands like `SET`, `GET`, `DEL`, etc. The server can parse client requests and execute the corresponding operations.
+## Supported Commands
 
-## RDB Persistence
-Added support for reading and writing Redis' RDB (Redis Database) files, allowing data to persist across server restarts.
+| Category | Commands |
+|---|---|
+| **General** | `PING`, `ECHO`, `KEYS`, `TYPE`, `CONFIG GET` |
+| **Strings** | `GET`, `SET` (with `PX` expiry), `INCR` |
+| **Streams** | `XADD`, `XRANGE`, `XREAD` (with blocking) |
+| **Transactions** | `MULTI`, `EXEC`, `DISCARD` |
+| **Replication** | `INFO`, `REPLCONF`, `PSYNC` |
 
-## Replication
-Implemented a basic replication mechanism, where a Redis server can function as a replica, replicating data from a master server.
+## Architecture
 
-## Streams
-Included support for Redis Streams, a data structure that enables advanced message queue and event streaming functionality.
+- **RESP Protocol** -- Full implementation of the Redis Serialization Protocol with binary-safe bulk strings, arrays, integers, simple strings, and error responses.
+- **Command Router** -- Extensible handler-based design. Adding a new command requires registering a single handler function.
+- **Store Abstraction** -- Thread-safe key-value store with internal locking, lazy expiry on access, and support for multiple data types (strings, streams).
+- **RDB Persistence** -- Read and load Redis RDB files to restore state on startup.
+- **Replication** -- Master-replica replication with replica handshake and command propagation.
 
-## Transactions
-Added transaction support, allowing clients to execute multiple commands as an atomic unit, with rollback capabilities.
+## Getting Started
+
+### Prerequisites
+
+- Go 1.24+
+
+### Run the Server
+
+```sh
+./run.sh
+```
+
+Or directly:
+
+```sh
+go run app/server.go
+```
+
+### Connect with redis-cli
+
+```sh
+redis-cli -p 6379
+```
 
 ## Testing
-The project now includes a comprehensive test suite to ensure the reliability and correctness of the implementation. Tests cover the core functionality of the Redis clone, including:
 
-- RESP protocol parsing and serialization
-- Command handling
-- Data structures
-- Connection handling
+The project includes three layers of tests:
 
-See the [Testing Guidelines](tests/README.md) for more information on running tests and adding new ones.
+- **Unit tests** -- RESP parsing, data structures, and individual command handlers.
+- **Integration tests** -- Connection handling and command routing.
+- **End-to-end tests** -- In-process tests that start a real TCP server and exercise full request/response cycles, including concurrency, pipelining, and edge cases.
 
-This project was a great learning experience, diving deep into the inner workings of Redis and building a functional in-memory data store from scratch.
+Run all tests:
+
+```sh
+go test ./...
+```
+
+Run a specific test suite:
+
+```sh
+go test ./e2e/ -v          # end-to-end tests
+go test ./app/resp/ -v     # RESP protocol tests
+go test ./app/handlers/ -v # command handler tests
+```
+
+## Project Structure
+
+```
+app/
+  server.go              # Entry point, server startup
+  config/                # Configuration and CONFIG command
+  handlers/              # Command handlers (CommandRouter)
+  rdb/                   # RDB file parsing
+  resp/                  # RESP protocol reader/writer
+  resp-connection/       # TCP connection handling, transactions, replication
+  structures/            # Store, data types (streams, maps)
+e2e/                     # End-to-end tests
+```
 
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
