@@ -3,6 +3,7 @@ package resp
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strconv"
 )
 
@@ -11,6 +12,7 @@ const (
 	BulkByte    = byte('$')
 	IntegerByte = byte(':')
 	StringByte  = byte('+')
+	ErrorByte   = byte('-')
 )
 
 type RespReader struct {
@@ -100,6 +102,12 @@ func (r *RespReader) Read() (RESP, error) {
 			return RESP{}, err
 		}
 		return Integer(i), nil
+	case ErrorByte:
+		buf, err := r.readLine()
+		if err != nil {
+			return RESP{}, err
+		}
+		return Error(string(buf)), nil
 	}
 	return RESP{}, fmt.Errorf("unsupported type: %c", typ)
 }
@@ -143,15 +151,24 @@ func (r *RespReader) readArray() (RESP, error) {
 }
 
 func (r *RespReader) readBulk() (RESP, error) {
-	_, err := r.readInt()
+	size, err := r.readInt()
 	if err != nil {
 		return RESP{}, err
 	}
 
-	buf, err := r.readLine()
+	if size == -1 {
+		return Nil(), nil
+	}
+
+	buf := make([]byte, size)
+	_, err = io.ReadFull(r.reader, buf)
 	if err != nil {
 		return RESP{}, err
 	}
+
+	// consume trailing \r\n
+	r.reader.ReadByte()
+	r.reader.ReadByte()
 
 	return RESP{
 		Type: "bulk",
