@@ -27,13 +27,11 @@ func (c *RespConn) Multi(params []resp.RESP) []byte {
 
 func (c *RespConn) Exec(params []resp.RESP) []byte {
 	if c.TxQueue != nil {
-
 		buf := []byte(fmt.Sprintf("*%d\r\n", len(c.TxQueue)))
 
 		for _, agrs := range c.TxQueue {
-			handler := handlers.GetHandler(strings.ToUpper(agrs[0].Bulk))
+			handler := c.router.GetHandler(strings.ToUpper(agrs[0].Bulk))
 			handlerResponse := handler(agrs[1:])
-
 			buf = append(buf, handlerResponse...)
 		}
 

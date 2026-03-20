@@ -3,7 +3,6 @@ package respConnection
 import (
 	"errors"
 	"github.com/jgrecu/redis-clone/app/config"
-	"github.com/jgrecu/redis-clone/app/handlers"
 	"github.com/jgrecu/redis-clone/app/resp"
 	"strings"
 )
@@ -27,7 +26,7 @@ func (r *RespConn) HandleShake() error {
 
 func (r *RespConn) handleMaster(args []resp.RESP) {
 	command := strings.ToUpper(args[0].Bulk)
-	handler := handlers.GetHandler(command)
+	handler := r.router.GetHandler(command)
 
 	data := handler(args[1:])
 

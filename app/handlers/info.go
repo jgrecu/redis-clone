@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func info(params []resp.RESP) []byte {
+func (r *CommandRouter) info(params []resp.RESP) []byte {
 	if len(params) < 1 {
 		return resp.Error("ERR wrong number of arguments for 'info' command").Marshal()
 	}

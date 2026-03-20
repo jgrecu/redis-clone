@@ -2,6 +2,8 @@ package respConnection
 
 import (
 	"bytes"
+	"github.com/jgrecu/redis-clone/app/handlers"
+	"github.com/jgrecu/redis-clone/app/structures"
 	"io"
 	"net"
 	"testing"
@@ -39,9 +41,14 @@ func (m *MockConn) SetDeadline(t time.Time) error      { return nil }
 func (m *MockConn) SetReadDeadline(t time.Time) error  { return nil }
 func (m *MockConn) SetWriteDeadline(t time.Time) error { return nil }
 
+func newTestRouter() *handlers.CommandRouter {
+	return handlers.NewRouter(structures.NewStore())
+}
+
 func TestNewRespConn(t *testing.T) {
 	mockConn := &MockConn{}
-	conn := NewRespConn(mockConn)
+	router := newTestRouter()
+	conn := NewRespConn(mockConn, router)
 
 	if conn.Conn != mockConn {
 		t.Errorf("NewRespConn() did not set Conn correctly")
@@ -66,7 +73,7 @@ func TestNewRespConn(t *testing.T) {
 
 func TestRespConn_Close(t *testing.T) {
 	mockConn := &MockConn{}
-	conn := NewRespConn(mockConn)
+	conn := NewRespConn(mockConn, newTestRouter())
 
 	conn.Close()
 
@@ -77,7 +84,7 @@ func TestRespConn_Close(t *testing.T) {
 
 func TestRespConn_Id(t *testing.T) {
 	mockConn := &MockConn{}
-	conn := NewRespConn(mockConn)
+	conn := NewRespConn(mockConn, newTestRouter())
 
 	if conn.Id() != mockConn.RemoteAddr().String() {
 		t.Errorf("Id() did not return the correct id")
@@ -86,7 +93,7 @@ func TestRespConn_Id(t *testing.T) {
 
 func TestRespConn_Write(t *testing.T) {
 	mockConn := &MockConn{}
-	conn := NewRespConn(mockConn)
+	conn := NewRespConn(mockConn, newTestRouter())
 
 	data := []byte("test data")
 	n, err := conn.Write(data)
@@ -105,7 +112,7 @@ func TestRespConn_Write(t *testing.T) {
 }
 
 func TestRespConn_AddOffset(t *testing.T) {
-	conn := NewRespConn(&MockConn{})
+	conn := NewRespConn(&MockConn{}, newTestRouter())
 
 	initialOffset := conn.GetOffset()
 	conn.AddOffset(10)
@@ -117,7 +124,7 @@ func TestRespConn_AddOffset(t *testing.T) {
 }
 
 func TestRespConn_GetOffset(t *testing.T) {
-	conn := NewRespConn(&MockConn{})
+	conn := NewRespConn(&MockConn{}, newTestRouter())
 
 	initialOffset := conn.GetOffset()
 	if initialOffset != 0 {
@@ -137,26 +144,10 @@ func TestIsWriteCommand(t *testing.T) {
 		command  string
 		expected bool
 	}{
-		{
-			name:     "SET command",
-			command:  "SET",
-			expected: true,
-		},
-		{
-			name:     "DEL command",
-			command:  "DEL",
-			expected: true,
-		},
-		{
-			name:     "GET command",
-			command:  "GET",
-			expected: false,
-		},
-		{
-			name:     "PING command",
-			command:  "PING",
-			expected: false,
-		},
+		{"SET command", "SET", true},
+		{"DEL command", "DEL", true},
+		{"GET command", "GET", false},
+		{"PING command", "PING", false},
 	}
 
 	for _, tt := range tests {

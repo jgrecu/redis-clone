@@ -170,8 +170,6 @@ func (s *Stream) Range(start, end string) []Entry {
                 }
                 entries = append(entries, e)
             }
-
-            entries = append(entries, entry...)
         }
     }
 
